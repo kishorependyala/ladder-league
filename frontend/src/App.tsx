@@ -13,6 +13,34 @@ import { S, mutedText, sectionTitle, statusPill } from './theme';
 
 type Tab = 'home' | 'league-admin' | 'super-admin';
 
+// ── Shareable URL helpers ───────────────────────────────────────────
+export function leagueShareUrl(leagueId: string): string {
+  return `${window.location.origin}${window.location.pathname}#league=${encodeURIComponent(leagueId)}`;
+}
+export function appShareUrl(): string {
+  return `${window.location.origin}${window.location.pathname}`;
+}
+function readHashLeagueId(): string | null {
+  const m = window.location.hash.match(/^#league=(.+)$/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// ── Copy-link hook ──────────────────────────────────────────────────
+export function useCopyLink() {
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const copy = (url: string) => {
+    navigator.clipboard.writeText(url).catch(() => {
+      // fallback for older browsers
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
+    setCopiedUrl(url);
+    setTimeout(() => setCopiedUrl(null), 2000);
+  };
+  return { copy, copiedUrl };
+}
+
 // ── Tab bar ────────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
   tabs: { id: Tab; label: string; emoji: string }[];
@@ -64,6 +92,39 @@ function App() {
   const [sports, setSports] = useState<any[]>([]);
   const [allLeagues, setAllLeagues] = useState<League[]>([]);
   const [showProfile, setShowProfile] = useState(false);
+  const { copy, copiedUrl } = useCopyLink();
+
+  // ── Sync URL hash ↔ selectedLeague ────────────────────────────────
+  useEffect(() => {
+    if (selectedLeague) {
+      const next = `#league=${encodeURIComponent(selectedLeague.id)}`;
+      if (window.location.hash !== next) window.history.pushState(null, '', next);
+    } else {
+      if (window.location.hash) window.history.pushState(null, '', window.location.pathname);
+    }
+  }, [selectedLeague]);
+
+  // Restore from hash on login / league list load
+  useEffect(() => {
+    const id = readHashLeagueId();
+    if (!id || !allLeagues.length) return;
+    const target = allLeagues.find(l => l.id === id);
+    if (target && (!selectedLeague || selectedLeague.id !== id)) setSelectedLeague(target);
+  }, [allLeagues]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Browser back/forward button support
+  useEffect(() => {
+    const handler = () => {
+      const id = readHashLeagueId();
+      if (!id) setSelectedLeague(null);
+      else {
+        const target = allLeagues.find(l => l.id === id);
+        if (target) setSelectedLeague(target);
+      }
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, [allLeagues]);
 
   useEffect(() => {
     if (!user) return;
@@ -174,7 +235,14 @@ function App() {
 
   return (
     <div style={S.shell}>
-      <AppHeader user={user} onLogout={handleLogout} onHome={handleHome} onProfile={() => setShowProfile(true)} />
+      <AppHeader
+        user={user}
+        onLogout={handleLogout}
+        onHome={handleHome}
+        onProfile={() => setShowProfile(true)}
+        onShareApp={() => copy(appShareUrl())}
+        appLinkCopied={copiedUrl === appShareUrl()}
+      />
       <TabBar tabs={tabs} active={selectedLeague ? tab : tab} onChange={t => { setTab(t); setSelectedLeague(null); }} />
       <main style={S.main}>
         {impersonating && (
@@ -183,9 +251,17 @@ function App() {
           </button>
         )}
         {selectedLeague && (
-          <button onClick={() => setSelectedLeague(null)} style={{ ...S.linkBtn, fontSize: '0.88rem' }}>
-            ← Back to {tab === 'league-admin' ? 'League Admin' : 'My Leagues'}
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button onClick={() => setSelectedLeague(null)} style={{ ...S.linkBtn, fontSize: '0.88rem' }}>
+              ← Back to {tab === 'league-admin' ? 'League Admin' : 'My Leagues'}
+            </button>
+            <button
+              onClick={() => copy(leagueShareUrl(selectedLeague.id))}
+              style={{ padding: '0.2rem 0.6rem', borderRadius: '0.5rem', border: `1px solid ${copiedUrl === leagueShareUrl(selectedLeague.id) ? '#22c55e' : '#e5e7eb'}`, background: copiedUrl === leagueShareUrl(selectedLeague.id) ? '#f0fdf4' : '#f9fafb', color: copiedUrl === leagueShareUrl(selectedLeague.id) ? '#16a34a' : '#6b7280', fontSize: '0.78rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' }}
+            >
+              {copiedUrl === leagueShareUrl(selectedLeague.id) ? '✓ Copied!' : '🔗 Share this league'}
+            </button>
+          </div>
         )}
         {tabContent}
       </main>

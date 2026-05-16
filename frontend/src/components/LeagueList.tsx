@@ -1,7 +1,43 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { League, User } from '../api';
 import { formatLeagueDates, getDisplayName, isLeagueMember } from '../api';
+import { leagueShareUrl } from '../App';
 import { S, mutedText, statusPill, subheading } from '../theme';
+
+function CopyLeagueLink({ leagueId }: { leagueId: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const url = leagueShareUrl(leagueId);
+    navigator.clipboard.writeText(url).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy league link"
+      style={{
+        padding: '0.2rem 0.55rem',
+        borderRadius: '0.5rem',
+        border: `1px solid ${copied ? '#22c55e' : '#e5e7eb'}`,
+        background: copied ? '#f0fdf4' : '#f9fafb',
+        color: copied ? '#16a34a' : '#6b7280',
+        fontSize: '0.75rem',
+        fontWeight: copied ? 700 : 500,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {copied ? '✓ Copied!' : '🔗 Share'}
+    </button>
+  );
+}
 
 type LeagueListProps = {
   title: string | React.ReactNode;
@@ -41,7 +77,8 @@ function LeagueList({ title, leagues, user, emptyMessage, onOpenLeague, onJoinLe
                   </div>
                   <p style={{ ...mutedText, marginTop: '0.3rem' }}>{formatLeagueDates(league)}</p>
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <CopyLeagueLink leagueId={league.id} />
                   <button style={needsRanking ? S.smallBtn : S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>
                     {needsRanking ? '📋 Rank now' : (member && preStart ? '📋 Update ranking' : 'Open')}
                   </button>
