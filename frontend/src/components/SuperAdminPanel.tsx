@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, signup, type League, type RolesResponse, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, renameLeague, signup, type League, type RolesResponse, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 import DataBrowser from './DataBrowser';
@@ -130,6 +130,9 @@ function LeaguesTab({ leagues, sports, users, sessionUser, onLeaguesChange, onNo
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [busyPlayerOp, setBusyPlayerOp] = useState<string | null>(null);
   const [playerSearchQ, setPlayerSearchQ] = useState('');
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
 
   const managingLeague = useMemo(() => leagues.find(l => l.id === managingId) ?? null, [leagues, managingId]);
 
@@ -195,6 +198,21 @@ function LeaguesTab({ leagues, sports, users, sessionUser, onLeaguesChange, onNo
     setBusyPlayerOp(null);
   };
 
+  const handleRename = async (leagueId: string) => {
+    const trimmed = renameInput.trim();
+    if (!trimmed) { setRenamingId(null); return; }
+    setRenameBusy(true);
+    try {
+      const res = await renameLeague(leagueId, sessionUser.phone, trimmed);
+      if (res.success) {
+        onLeaguesChange(leagues.map(l => l.id === leagueId ? res.league : l));
+        onNotify(`League renamed to "${trimmed}".`);
+      } else { onFail(res.message || 'Could not rename.'); }
+    } catch (e) { onFail(e instanceof Error ? e.message : 'Error renaming.'); }
+    setRenameBusy(false);
+    setRenamingId(null);
+  };
+
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
       {/* Delete PIN modal */}
@@ -247,7 +265,31 @@ function LeaguesTab({ leagues, sports, users, sessionUser, onLeaguesChange, onNo
               <tbody>
                 {leagues.map((league, i) => (
                   <tr key={league.id} style={{ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fffbeb' : '#fff' }}>
-                    <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600, color: '#78350f' }}>{league.name}</td>
+                    <td style={{ padding: '0.65rem 0.75rem', fontWeight: 600, color: '#78350f' }}>
+                      {renamingId === league.id ? (
+                        <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                          <input
+                            autoFocus
+                            value={renameInput}
+                            onChange={e => setRenameInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleRename(league.id); if (e.key === 'Escape') setRenamingId(null); }}
+                            style={{ ...S.inp, fontWeight: 600, color: '#78350f', fontSize: '0.9rem', padding: '0.25rem 0.5rem', width: 160 }}
+                            disabled={renameBusy}
+                          />
+                          <button style={{ ...S.smallBtn, padding: '0.2rem 0.5rem', fontSize: '0.8rem' }} onClick={() => handleRename(league.id)} disabled={renameBusy}>{renameBusy ? '…' : '✓'}</button>
+                          <button style={{ ...S.smallOutlineBtn, padding: '0.2rem 0.5rem', fontSize: '0.8rem' }} onClick={() => setRenamingId(null)}>✕</button>
+                        </div>
+                      ) : (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {league.name}
+                          <button
+                            onClick={() => { setRenameInput(league.name); setRenamingId(league.id); }}
+                            title="Rename"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '0.82rem', padding: '0 0.15rem', lineHeight: 1 }}
+                          >✏️</button>
+                        </span>
+                      )}
+                    </td>
                     <td style={{ padding: '0.65rem 0.75rem', color: '#6b7280' }}>{sportLabel(league.sport)}</td>
                     <td style={{ padding: '0.65rem 0.75rem' }}>
                       <span style={{ fontSize: '0.78rem', fontWeight: 600, padding: '0.2rem 0.55rem', borderRadius: '99px', background: league.status === 'active' ? '#dcfce7' : league.status === 'draft' ? '#fef9c3' : '#f3f4f6', color: league.status === 'active' ? '#166534' : league.status === 'draft' ? '#854d0e' : '#374151' }}>

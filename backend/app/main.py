@@ -1005,6 +1005,26 @@ def api_delete_user(user_id: str, phone: str = Query(...)):
     return {"success": True, "message": f"User {user_id} deleted"}
 
 
+@app.patch("/api/leagues/{league_id}/name")
+def api_rename_league(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    new_name = (data.get("name") or "").strip()
+    if not phone:
+        return {"success": False, "message": "phone required"}
+    if not new_name:
+        return {"success": False, "message": "name required"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    user = get_user_by_phone(phone)
+    is_admin = user and user["id"] in lg.get("adminIds", [])
+    if not is_super_admin(phone) and not is_admin:
+        return {"success": False, "message": "Not authorized"}
+    lg["name"] = new_name
+    save_league(lg)
+    return {"success": True, "league": lg}
+
+
 @app.put("/api/leagues/{league_id}/rules")
 def api_update_league_rules(league_id: str, data: dict = Body(...)):
     phone = data.get("phone")

@@ -419,6 +419,18 @@ export function deleteLeague(requesterPhone: string, leagueId: string): Promise<
     .then(res => res.json());
 }
 
+export function renameLeague(
+  leagueId: string,
+  phone: string,
+  name: string,
+): Promise<{ success: boolean; league: League; message?: string }> {
+  return request(`/api/leagues/${encodeURIComponent(leagueId)}/name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, name }),
+  });
+}
+
 export function updateLeagueRules(
   leagueId: string,
   phone: string,

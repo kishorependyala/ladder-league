@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, startLeague, startRanking, type League, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, type League, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
+import LeagueRulesEditor from './LeagueRulesEditor';
 
 const API_BASE = 'http://localhost:8080';
 
@@ -30,6 +31,11 @@ function LeagueCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<'players' | 'rules'>('players');
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(league.name);
+  const [nameBusy, setNameBusy] = useState(false);
 
   // add player state
   const [addMode, setAddMode] = useState<AddMode>('search');
@@ -123,14 +129,49 @@ function LeagueCard({
     });
   };
 
+  const handleRename = async () => {
+    const trimmed = nameInput.trim();
+    if (!trimmed || trimmed === league.name) { setEditingName(false); return; }
+    setNameBusy(true);
+    try {
+      const res = await renameLeague(league.id, user.phone, trimmed);
+      if (res.success) { onLeagueUpdate(res.league); setMessage('League renamed.'); }
+      else setError(res.message || 'Failed to rename.');
+    } catch { setError('Failed to rename.'); }
+    setNameBusy(false);
+    setEditingName(false);
+  };
+
   return (
     <div style={{ border: '1px solid #fed7aa', borderRadius: '1rem', padding: '1.1rem', background: '#fff', display: 'grid', gap: '1rem' }}>
       {/* header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-        <div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <strong style={{ color: '#78350f', fontSize: '1.05rem' }}>{league.name}</strong>
-            <span style={statusPill(league.status)}>{league.status}</span>
+            {editingName ? (
+              <>
+                <input
+                  autoFocus
+                  value={nameInput}
+                  onChange={e => setNameInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') { setEditingName(false); setNameInput(league.name); } }}
+                  style={{ ...S.inp, fontWeight: 700, color: '#78350f', fontSize: '1rem', flex: 1, minWidth: 0 }}
+                  disabled={nameBusy}
+                />
+                <button style={{ ...S.smallBtn, padding: '0.25rem 0.6rem' }} onClick={handleRename} disabled={nameBusy}>{nameBusy ? '…' : '✓'}</button>
+                <button style={{ ...S.smallOutlineBtn, padding: '0.25rem 0.6rem' }} onClick={() => { setEditingName(false); setNameInput(league.name); }}>✕</button>
+              </>
+            ) : (
+              <>
+                <strong style={{ color: '#78350f', fontSize: '1.05rem' }}>{league.name}</strong>
+                <span style={statusPill(league.status)}>{league.status}</span>
+                <button
+                  onClick={() => { setNameInput(league.name); setEditingName(true); }}
+                  title="Rename league"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '0.85rem', padding: '0.1rem 0.3rem', borderRadius: '0.35rem' }}
+                >✏️</button>
+              </>
+            )}
           </div>
           <p style={{ ...mutedText, marginTop: '0.2rem', fontSize: '0.85rem' }}>
             {league.sport}
@@ -151,98 +192,132 @@ function LeagueCard({
       {error && <div style={S.errorBox}>{error}</div>}
       {message && <div style={S.successBox}>{message}</div>}
 
-      {/* player list */}
-      <div>
-        <p style={{ ...subheading, marginBottom: '0.5rem' }}>Players ({league.players.length})</p>
-        {league.players.length === 0
-          ? <p style={mutedText}>No players yet.</p>
-          : (
-            <div style={{ display: 'grid', gap: '0.4rem' }}>
-              {league.players.map(p => {
-                const isAdmin = adminSet.has(p.id);
-                const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
-                return (
-                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
-                    <span style={{ flex: 1, color: '#78350f', fontWeight: 500, fontSize: '0.92rem' }}>
-                      {p.firstName} {p.lastName}
-                      {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>admin</span>}
-                    </span>
-                    <span style={{ ...mutedText, fontSize: '0.8rem' }}>{p.phone}</span>
-                    {!isAdmin && (
-                      <button
-                        style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                        disabled={busy}
-                        onClick={() => handleMakeAdmin(p)}
-                      >
-                        ☆ Make admin
-                      </button>
-                    )}
+      {/* tabs */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>
+        {(['players', 'rules'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t)}
+            style={{
+              padding: '0.5rem 1rem',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeTab === t ? '3px solid #f59e0b' : '3px solid transparent',
+              marginBottom: -2,
+              color: activeTab === t ? '#92400e' : '#6b7280',
+              fontWeight: activeTab === t ? 700 : 500,
+              fontSize: '0.88rem',
+              cursor: 'pointer',
+            }}
+          >
+            {t === 'players' ? `👥 Players (${league.players.length})` : '📋 League Rules'}
+          </button>
+        ))}
+      </div>
+      {/* Players tab */}
+      {activeTab === 'players' && (
+        <>
+          <div>
+            {league.players.length === 0
+              ? <p style={mutedText}>No players yet.</p>
+              : (
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {league.players.map(p => {
+                    const isAdmin = adminSet.has(p.id);
+                    const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
+                    return (
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
+                        <span style={{ flex: 1, color: '#78350f', fontWeight: 500, fontSize: '0.92rem' }}>
+                          {p.firstName} {p.lastName}
+                          {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>admin</span>}
+                        </span>
+                        <span style={{ ...mutedText, fontSize: '0.8rem' }}>{p.phone}</span>
+                        {!isAdmin && (
+                          <button
+                            style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                            disabled={busy}
+                            onClick={() => handleMakeAdmin(p)}
+                          >
+                            ☆ Make admin
+                          </button>
+                        )}
+                        <button
+                          style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                          disabled={busy}
+                          onClick={() => handleRemovePlayer(p)}
+                          title="Remove from league"
+                        >
+                          {busyId === `remove-${p.id}` ? '…' : '✕ Remove'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            }
+          </div>
+
+          {/* add player */}
+          <div style={{ borderTop: '1px solid #fde68a', paddingTop: '0.8rem', display: 'grid', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <p style={{ ...subheading, margin: 0 }}>Add player</p>
+              <button
+                style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: addMode === 'search' ? '#fef3c7' : undefined }}
+                onClick={() => setAddMode('search')}
+              >
+                From system
+              </button>
+              <button
+                style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: addMode === 'new' ? '#fef3c7' : undefined }}
+                onClick={() => setAddMode('new')}
+              >
+                New player
+              </button>
+            </div>
+
+            {addMode === 'search' ? (
+              <div style={{ display: 'grid', gap: '0.4rem' }}>
+                <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by name or phone…" style={S.inp} />
+                {searchQ && searchCandidates.length === 0 && <p style={mutedText}>No users found.</p>}
+                {searchCandidates.map(u => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.7rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px solid #e5e7eb' }}>
+                    <span style={{ flex: 1, fontSize: '0.9rem' }}>{getDisplayName(u)}</span>
+                    <span style={{ ...mutedText, fontSize: '0.8rem' }}>{u.phone}</span>
                     <button
-                      style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
-                      disabled={busy}
-                      onClick={() => handleRemovePlayer(p)}
-                      title="Remove from league"
+                      style={{ ...S.smallBtn, fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
+                      disabled={busyId === `add-${u.id}`}
+                      onClick={() => handleAddExisting(u)}
                     >
-                      {busyId === `remove-${p.id}` ? '…' : '✕ Remove'}
+                      {busyId === `add-${u.id}` ? '…' : '+ Add'}
                     </button>
                   </div>
-                );
-              })}
-            </div>
-          )
-        }
-      </div>
-
-      {/* add player */}
-      <div style={{ borderTop: '1px solid #fde68a', paddingTop: '0.8rem', display: 'grid', gap: '0.6rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <p style={{ ...subheading, margin: 0 }}>Add player</p>
-          <button
-            style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: addMode === 'search' ? '#fef3c7' : undefined }}
-            onClick={() => setAddMode('search')}
-          >
-            From system
-          </button>
-          <button
-            style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: addMode === 'new' ? '#fef3c7' : undefined }}
-            onClick={() => setAddMode('new')}
-          >
-            New player
-          </button>
-        </div>
-
-        {addMode === 'search' ? (
-          <div style={{ display: 'grid', gap: '0.4rem' }}>
-            <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search by name or phone…" style={S.inp} />
-            {searchQ && searchCandidates.length === 0 && <p style={mutedText}>No users found.</p>}
-            {searchCandidates.map(u => (
-              <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.7rem', background: '#f9fafb', borderRadius: '0.5rem', border: '1px solid #e5e7eb' }}>
-                <span style={{ flex: 1, fontSize: '0.9rem' }}>{getDisplayName(u)}</span>
-                <span style={{ ...mutedText, fontSize: '0.8rem' }}>{u.phone}</span>
-                <button
-                  style={{ ...S.smallBtn, fontSize: '0.75rem', padding: '0.2rem 0.6rem' }}
-                  disabled={busyId === `add-${u.id}`}
-                  onClick={() => handleAddExisting(u)}
-                >
-                  {busyId === `add-${u.id}` ? '…' : '+ Add'}
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: '0.5rem' }}>
+                <input value={newPhone} onChange={e => setNewPhone(e.target.value.replace(/\D/g, ''))} placeholder="Phone number *" style={S.inp} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <input value={newFirst} onChange={e => setNewFirst(e.target.value)} placeholder="First name *" style={S.inp} />
+                  <input value={newLast} onChange={e => setNewLast(e.target.value)} placeholder="Last name *" style={S.inp} />
+                </div>
+                <p style={{ ...mutedText, fontSize: '0.8rem' }}>Default PIN 0000 will be assigned. Player can change it after login.</p>
+                <button style={S.smallBtn} disabled={busyId === 'add-new'} onClick={handleAddNew}>
+                  {busyId === 'add-new' ? 'Creating…' : '+ Create & add player'}
                 </button>
               </div>
-            ))}
+            )}
           </div>
-        ) : (
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
-            <input value={newPhone} onChange={e => setNewPhone(e.target.value.replace(/\D/g, ''))} placeholder="Phone number *" style={S.inp} />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <input value={newFirst} onChange={e => setNewFirst(e.target.value)} placeholder="First name *" style={S.inp} />
-              <input value={newLast} onChange={e => setNewLast(e.target.value)} placeholder="Last name *" style={S.inp} />
-            </div>
-            <p style={{ ...mutedText, fontSize: '0.8rem' }}>Default PIN 0000 will be assigned. Player can change it after login.</p>
-            <button style={S.smallBtn} disabled={busyId === 'add-new'} onClick={handleAddNew}>
-              {busyId === 'add-new' ? 'Creating…' : '+ Create & add player'}
-            </button>
-          </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* Rules tab */}
+      {activeTab === 'rules' && (
+        <LeagueRulesEditor
+          league={league}
+          adminPhone={user.phone}
+          onUpdated={onLeagueUpdate}
+        />
+      )}
     </div>
   );
 }

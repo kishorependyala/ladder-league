@@ -76,6 +76,11 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [useLateJoinCap, setUseLateJoinCap] = useState(league.rules?.lateJoinCap != null);
   const [lateJoinCap, setLateJoinCap] = useState(league.rules?.lateJoinCap ?? 5);
 
+  // League-point values
+  const [winPts, setWinPts] = useState(league.rules?.scoring?.win ?? 3);
+  const [lossPts, setLossPts] = useState(league.rules?.scoring?.loss ?? 0);
+  const [noGamePts, setNoGamePts] = useState(league.rules?.scoring?.noGame ?? -1);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [saved2, setSaved2] = useState(false);
@@ -116,6 +121,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         joinPolicy,
         newPlayerRankPolicy: rankPolicy,
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
+        scoring: { win: winPts, loss: lossPts, noGame: noGamePts },
       });
       if (res.success) {
         onUpdated(res.league);
@@ -143,6 +149,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         joinPolicy: 'draft_only',
         newPlayerRankPolicy: 'bottom',
         lateJoinCap: null,
+        scoring: { win: 3, loss: 0, noGame: -1 },
       });
       if (res.success) {
         onUpdated(res.league);
@@ -159,6 +166,9 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         setJoinPolicy('draft_only');
         setRankPolicy('bottom');
         setUseLateJoinCap(false);
+        setWinPts(3);
+        setLossPts(0);
+        setNoGamePts(-1);
         setSaved2(true);
         setTimeout(() => setSaved2(false), 2500);
       } else {
@@ -319,6 +329,33 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         )}
       </Section>
 
+      {/* ── League Points ── */}
+      <Section title="🏆 League points per match">
+        <p style={{ ...mutedText, fontSize: '0.78rem', margin: 0 }}>Points awarded in the league standings for each match outcome.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+          {([
+            { label: '🏅 Win',       val: winPts,    set: setWinPts,    min: 0, max: 20 },
+            { label: '📉 Loss',      val: lossPts,   set: setLossPts,   min: -5, max: 10 },
+            { label: '⏸️ No-game',   val: noGamePts, set: setNoGamePts, min: -10, max: 0 },
+          ] as { label: string; val: number; set: (n: number) => void; min: number; max: number }[]).map(({ label, val, set, min, max }) => (
+            <div key={label} style={{ display: 'grid', gap: '0.3rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.8rem', fontWeight: 600 }}>{label}</label>
+              <input
+                type="number"
+                min={min}
+                max={max}
+                value={val}
+                onChange={e => set(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
+                style={{ ...S.inp, textAlign: 'center' }}
+              />
+            </div>
+          ))}
+        </div>
+        <p style={{ ...mutedText, fontSize: '0.75rem', marginTop: '0.1rem' }}>
+          Win: <strong>+{winPts}</strong> pts &nbsp;·&nbsp; Loss: <strong>{lossPts >= 0 ? '+' : ''}{lossPts}</strong> pts &nbsp;·&nbsp; No-game: <strong>{noGamePts}</strong> pts &nbsp;·&nbsp; Upset bonus: <strong>+{upsetBonus}</strong>
+        </p>
+      </Section>
+
       {/* ── Membership ── */}
       <Section title="🚪 Membership & late join">
         {/* Join policy */}
@@ -424,6 +461,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         · {matchFormat === 'adhoc' ? ' ad-hoc scheduling' : ' round-robin scheduling'}
         · {minMatchesPerWeek}/week minimum
         · upset bonus {upsetBonus}
+        · <strong>W/L/NG: {winPts}/{lossPts}/{noGamePts}</strong>
         · join: {JOIN_POLICY_OPTIONS.find(o => o.value === joinPolicy)?.label ?? joinPolicy}
         {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && ` · new rank: ${RANK_POLICY_OPTIONS.find(o => o.value === rankPolicy)?.label ?? rankPolicy}`}
         {useLateJoinCap && ` · max ${lateJoinCap} late joiners`}
