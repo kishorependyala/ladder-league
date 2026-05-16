@@ -1,9 +1,10 @@
+import React from 'react';
 import type { League, User } from '../api';
 import { formatLeagueDates, getDisplayName, isLeagueMember } from '../api';
 import { S, mutedText, statusPill, subheading } from '../theme';
 
 type LeagueListProps = {
-  title: string;
+  title: string | React.ReactNode;
   leagues: League[];
   user: User;
   emptyMessage: string;

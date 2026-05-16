@@ -41,6 +41,7 @@ class User(BaseModel):
     lastName: str
     email: Optional[str] = None
     pin: Optional[str] = None
+    favoriteSport: Optional[str] = None
 
 # Resolve DATA_DIR: env var (set by Azure App Service or .env) wins, then repo default.
 # Relative paths in DATA_DIR are resolved relative to the backend directory.
@@ -212,7 +213,7 @@ def api_update_user(user_id: str, data: dict = Body(...)):
     user = get_user_by_id(user_id)
     if not user:
         return {"success": False, "message": "User not found"}
-    for field in ("firstName", "lastName", "email"):
+    for field in ("firstName", "lastName", "email", "favoriteSport"):
         if field in data:
             user[field] = data[field].strip() if isinstance(data[field], str) else data[field]
     save_user(user)

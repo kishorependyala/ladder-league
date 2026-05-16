@@ -1,19 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { authCheckPhone, getAllUsers, loginWithPin, requestPinReset, signup, verifyPinReset, type User } from '../api';
+import { SPORT_SCORING } from '../api';
 import { S } from '../theme';
 
 const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-type AuthStep = 'phone' | 'pin' | 'forgot' | 'reset-code' | 'signup-name' | 'signup-email' | 'signup-pin';
+const SPORTS = Object.entries(SPORT_SCORING).map(([id]) => {
+  const labels: Record<string, string> = { tennis: 'Tennis 🎾', 'table-tennis': 'Table Tennis 🏓', pickleball: 'Pickleball 🥒', badminton: 'Badminton 🏸' };
+  return { id, label: labels[id] ?? id };
+});
+
+type AuthStep = 'phone' | 'pin' | 'forgot' | 'reset-code' | 'signup-name' | 'signup-email' | 'signup-sport' | 'signup-pin';
 
 function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   const [step, setStep] = useState<AuthStep>('phone');
   const [phone, setPhone] = useState('');
+  const [query, setQuery] = useState('');          // typeahead input value
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [favoriteSport, setFavoriteSport] = useState('');
   const [resetCode, setResetCode] = useState('');
   const [newPin, setNewPin] = useState('');
   const [maskedEmail, setMaskedEmail] = useState('');
@@ -21,20 +29,54 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getAllUsers().then(users => {
-      if (Array.isArray(users) && users.length < 10) setAllUsers(users);
+      if (Array.isArray(users)) setAllUsers(users);
     }).catch(() => {});
   }, []);
 
+  // Filter users for typeahead
+  const suggestions = (() => {
+    const q = query.trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+    return allUsers.filter(u => {
+      const full = `${u.firstName} ${u.lastName}`.toLowerCase();
+      const phone = u.phone.toLowerCase();
+      return full.includes(q) || phone.includes(q);
+    }).slice(0, 6);
+  })();
+
+  // Dismiss suggestions on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!suggestionsRef.current?.contains(e.target as Node) && !inputRef.current?.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selectSuggestion = (u: User) => {
+    setPhone(u.phone);
+    setQuery(`${u.firstName} ${u.lastName}`);
+    setShowSuggestions(false);
+    handlePhoneContinue(u.phone);
+  };
+
   const handlePhoneContinue = async (overridePhone?: string) => {
-    const p = overridePhone ?? phone;
-    if (!p) { setError('Please select or enter a phone number.'); return; }
+    // Try to parse phone from query if no explicit phone
+    const rawPhone = overridePhone ?? phone;
+    const resolvedPhone = rawPhone || query.replace(/\D/g, '');
+    if (!resolvedPhone) { setError('Please enter your name or phone number.'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await authCheckPhone(p);
-      setPhone(p);
+      const data = await authCheckPhone(resolvedPhone);
+      setPhone(resolvedPhone);
       setStep(data.exists ? 'pin' : 'signup-name');
     } catch {
       setError('Could not reach server. Please try again.');
@@ -90,7 +132,7 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
     if (pin !== pinConfirm) { setError('PINs do not match.'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await signup(phone, firstName, lastName, email, pin);
+      const data = await signup(phone, firstName, lastName, email, pin, favoriteSport || undefined);
       if (data.success) onAuth(data.user);
       else setError(data.message || 'Signup failed.');
     } catch {
@@ -112,8 +154,6 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
     </div>
   );
 
-  const showDropdown = allUsers.length > 0 && allUsers.length < 10;
-
   return (
     <div style={S.authPage}>
       <div style={S.authCard}>
@@ -126,29 +166,67 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
         {step === 'phone' && (<>
           <div style={S.fieldGroup}>
             <label style={S.label}>Who are you?</label>
-            {showDropdown ? (
-              <select
-                style={{ ...S.inp, cursor: 'pointer' }}
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder="Type your name or phone number…"
+                value={query}
+                onChange={e => { setQuery(e.target.value); setPhone(''); setShowSuggestions(true); setError(''); }}
+                onFocus={() => setShowSuggestions(true)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { setShowSuggestions(false); handlePhoneContinue(); }
+                  if (e.key === 'Escape') setShowSuggestions(false);
+                }}
+                style={S.inp}
                 autoFocus
-              >
-                <option value="">— Select your name —</option>
-                {allUsers.map(u => (
-                  <option key={u.id} value={u.phone}>
-                    {u.firstName} {u.lastName} · {u.phone}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input type="tel" placeholder="e.g. 7321234567" value={phone}
-                onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={e => e.key === 'Enter' && handlePhoneContinue()}
-                style={S.inp} autoFocus />
-            )}
+                autoComplete="off"
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                    background: '#fff', borderRadius: '0 0 0.75rem 0.75rem',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    border: '1px solid #fde68a', borderTop: 'none',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {suggestions.map(u => (
+                    <button
+                      key={u.id}
+                      onMouseDown={e => { e.preventDefault(); selectSuggestion(u); }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '0.65rem 0.9rem', background: 'none', border: 'none',
+                        borderBottom: '1px solid #fef3c7', cursor: 'pointer',
+                        textAlign: 'left', gap: '0.5rem',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = '#fffbeb')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', flexShrink: 0 }}>
+                          {u.firstName[0]}{u.lastName[0]}
+                        </div>
+                        <span style={{ fontWeight: 600, color: '#1f2937', fontSize: '0.9rem' }}>{u.firstName} {u.lastName}</span>
+                      </div>
+                      <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
+                        ···{u.phone.slice(-4)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
+              New player? Just enter your phone number to sign up.
+            </p>
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
-          <button onClick={() => handlePhoneContinue()} style={S.primaryBtn} disabled={loading || !phone}>
+          <button onClick={() => handlePhoneContinue()} style={S.primaryBtn} disabled={loading || (!phone && !query.trim())}>
             {loading ? 'Checking…' : 'Continue →'}
           </button>
           {IS_LOCAL && (
@@ -255,14 +333,45 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
             <label style={S.label}>Email Address</label>
             <input type="email" placeholder="you@example.com" value={email}
               onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && email.includes('@')) { setError(''); setStep('signup-pin'); } }}
+              onKeyDown={e => { if (e.key === 'Enter' && email.includes('@')) { setError(''); setStep('signup-sport'); } }}
               style={S.inp} autoFocus />
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
-          <button onClick={() => { if (!email || !email.includes('@')) { setError('Valid email is required.'); return; } setError(''); setStep('signup-pin'); }} style={S.primaryBtn}>
+          <button onClick={() => { if (!email || !email.includes('@')) { setError('Valid email is required.'); return; } setError(''); setStep('signup-sport'); }} style={S.primaryBtn}>
             Next →
           </button>
           {backBtn('signup-name')}
+        </>)}
+
+        {step === 'signup-sport' && (<>
+          <p style={{ margin: 0, textAlign: 'center', color: '#6b7280', fontSize: '0.9rem' }}>
+            What's your favourite sport? We'll show it by default.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+            {SPORTS.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setFavoriteSport(favoriteSport === s.id ? '' : s.id)}
+                style={{
+                  padding: '0.75rem 0.5rem',
+                  borderRadius: '0.75rem',
+                  border: `2px solid ${favoriteSport === s.id ? '#f59e0b' : '#e5e7eb'}`,
+                  background: favoriteSport === s.id ? '#fef3c7' : '#fff',
+                  color: favoriteSport === s.id ? '#92400e' : '#374151',
+                  fontWeight: favoriteSport === s.id ? 700 : 500,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setStep('signup-pin')} style={S.primaryBtn}>
+            {favoriteSport ? 'Next →' : 'Skip →'}
+          </button>
+          {backBtn('signup-email')}
         </>)}
 
         {step === 'signup-pin' && (<>
@@ -281,7 +390,7 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           <button onClick={handleSignup} style={S.primaryBtn} disabled={loading}>
             {loading ? 'Creating account…' : 'Create Account →'}
           </button>
-          {backBtn('signup-email')}
+          {backBtn('signup-sport')}
         </>)}
       </div>
     </div>

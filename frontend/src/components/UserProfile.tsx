@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { updateUserProfile, type User } from '../api';
+import { SPORT_SCORING, updateUserProfile, type User } from '../api';
 import { S, mutedText } from '../theme';
 
 type UserProfileProps = {
@@ -8,11 +8,17 @@ type UserProfileProps = {
   onUpdated: (updated: User) => void;
 };
 
+const SPORTS = Object.entries(SPORT_SCORING).map(([id]) => {
+  const labels: Record<string, string> = { tennis: 'Tennis 🎾', 'table-tennis': 'Table Tennis 🏓', pickleball: 'Pickleball 🥒', badminton: 'Badminton 🏸' };
+  return { id, label: labels[id] ?? id };
+});
+
 function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
   const [editing, setEditing] = useState(false);
   const [firstName, setFirstName] = useState(user.firstName);
   const [lastName, setLastName] = useState(user.lastName);
   const [email, setEmail] = useState(user.email || '');
+  const [favoriteSport, setFavoriteSport] = useState(user.favoriteSport || '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
@@ -21,7 +27,12 @@ function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
     if (!firstName.trim() || !lastName.trim()) { setError('First and last name are required.'); return; }
     setError(''); setLoading(true);
     try {
-      const result = await updateUserProfile(user.id, { firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim() || undefined });
+      const result = await updateUserProfile(user.id, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim() || undefined,
+        favoriteSport: favoriteSport || null,
+      });
       if (result.success) {
         onUpdated(result.user);
         setSaved(true);
@@ -37,11 +48,13 @@ function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
   };
 
   const handleCancel = () => {
-    setFirstName(user.firstName); setLastName(user.lastName); setEmail(user.email || '');
+    setFirstName(user.firstName); setLastName(user.lastName);
+    setEmail(user.email || ''); setFavoriteSport(user.favoriteSport || '');
     setError(''); setEditing(false);
   };
 
   const initials = `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}`.toUpperCase();
+  const sportLabel = SPORTS.find(s => s.id === user.favoriteSport)?.label;
 
   return (
     <div
@@ -62,6 +75,7 @@ function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
             <div style={{ marginTop: '0.75rem', color: '#fff' }}>
               <div style={{ fontSize: '1.35rem', fontWeight: 800 }}>{user.firstName} {user.lastName}</div>
               <div style={{ fontSize: '0.88rem', opacity: 0.85 }}>{user.phone}</div>
+              {sportLabel && <div style={{ marginTop: '0.3rem', fontSize: '0.85rem', opacity: 0.9 }}>{sportLabel}</div>}
             </div>
           )}
         </div>
@@ -85,6 +99,39 @@ function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
               <Field label="Email (optional)">
                 <input style={S.inp} type="email" value={email} placeholder="your@email.com" onChange={e => setEmail(e.target.value)} />
               </Field>
+              <Field label="Favourite sport (sets your default view)">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  {SPORTS.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setFavoriteSport(favoriteSport === s.id ? '' : s.id)}
+                      style={{
+                        padding: '0.55rem 0.5rem',
+                        borderRadius: '0.65rem',
+                        border: `2px solid ${favoriteSport === s.id ? '#f59e0b' : '#e5e7eb'}`,
+                        background: favoriteSport === s.id ? '#fef3c7' : '#fff',
+                        color: favoriteSport === s.id ? '#92400e' : '#374151',
+                        fontWeight: favoriteSport === s.id ? 700 : 500,
+                        fontSize: '0.85rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                  {favoriteSport && (
+                    <button
+                      type="button"
+                      onClick={() => setFavoriteSport('')}
+                      style={{ padding: '0.55rem', borderRadius: '0.65rem', border: '1px dashed #d1d5db', background: '#f9fafb', color: '#9ca3af', fontSize: '0.8rem', cursor: 'pointer', gridColumn: '1 / -1' }}
+                    >
+                      ✕ Clear preference
+                    </button>
+                  )}
+                </div>
+              </Field>
               <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end' }}>
                 <button style={S.smallOutlineBtn} onClick={handleCancel} disabled={loading}>Cancel</button>
                 <button style={S.primaryBtn} onClick={handleSave} disabled={loading}>{loading ? 'Saving…' : '✓ Save changes'}</button>
@@ -94,6 +141,7 @@ function UserProfile({ user, onClose, onUpdated }: UserProfileProps) {
             <>
               <div style={{ background: '#fffbeb', borderRadius: '0.85rem', padding: '1rem', display: 'grid', gap: '0.75rem' }}>
                 <InfoRow label="📧 Email" value={user.email || '—'} />
+                <InfoRow label="⭐ Favourite sport" value={sportLabel || '—'} />
                 <InfoRow label="📅 Member since" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '—'} />
               </div>
               <button
@@ -129,3 +177,4 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export default UserProfile;
+

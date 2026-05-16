@@ -40,6 +40,7 @@ export interface User {
   lastName: string;
   email?: string;
   pin?: string;
+  favoriteSport?: string;
   createdAt: string;
 }
 
@@ -246,8 +247,8 @@ export function verifyPinReset(phone: string, code: string, newPin: string): Pro
   return post('/api/auth/verify-pin-reset', { phone, code, newPin });
 }
 
-export function signup(phone: string, firstName: string, lastName: string, email: string, pin: string): Promise<{ success: boolean; user: User; message?: string }> {
-  return post('/api/signup', { phone, firstName, lastName, email, pin });
+export function signup(phone: string, firstName: string, lastName: string, email: string, pin: string, favoriteSport?: string): Promise<{ success: boolean; user: User; message?: string }> {
+  return post('/api/signup', { phone, firstName, lastName, email, pin, ...(favoriteSport ? { favoriteSport } : {}) });
 }
 
 export function getSports(): Promise<Sport[]> {
@@ -432,7 +433,7 @@ export function updateLeagueRules(
 
 export function updateUserProfile(
   userId: string,
-  updates: { firstName?: string; lastName?: string; email?: string },
+  updates: { firstName?: string; lastName?: string; email?: string; favoriteSport?: string | null },
 ): Promise<{ success: boolean; user: User; message?: string }> {
   return request(`/api/users/${encodeURIComponent(userId)}`, {
     method: 'PUT',

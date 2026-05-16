@@ -72,9 +72,24 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
   // Per-sport selected league id
   const [selectedBySport, setSelectedBySport] = useState<Record<string, string>>({});
 
+  // Sport filter for "My leagues" — defaults to user's favorite sport
+  const [activeSportFilter, setActiveSportFilter] = useState<string>(user.favoriteSport ?? '');
+
   const rankingNeeded = useMemo(
     () => myLeagues.filter(l => ['draft', 'ranking', 'ranked'].includes(l.status) && !l.stackRanks?.[user.id]),
     [myLeagues, user.id],
+  );
+
+  // Filtered view of my leagues
+  const displayedLeagues = useMemo(() => {
+    if (!activeSportFilter) return myLeagues;
+    return myLeagues.filter(l => l.sport === activeSportFilter);
+  }, [myLeagues, activeSportFilter]);
+
+  // Sports that have at least one of my leagues
+  const mySports = useMemo(() =>
+    sports.filter(s => myLeagues.some(l => l.sport === s.id)),
+    [sports, myLeagues],
   );
 
   const handleJoinLeague = async (league: League) => {
@@ -124,10 +139,33 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
       )}
 
       <LeagueList
-        title="My leagues"
-        leagues={myLeagues}
+        title={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <span>My leagues</span>
+            {mySports.length > 1 && (
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => setActiveSportFilter('')}
+                  style={{ padding: '0.25rem 0.6rem', borderRadius: '99px', border: '1.5px solid', borderColor: !activeSportFilter ? '#f59e0b' : '#e5e7eb', background: !activeSportFilter ? '#fef3c7' : '#f9fafb', color: !activeSportFilter ? '#92400e' : '#6b7280', fontSize: '0.78rem', fontWeight: !activeSportFilter ? 700 : 500, cursor: 'pointer' }}
+                >
+                  All
+                </button>
+                {mySports.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSportFilter(activeSportFilter === s.id ? '' : s.id)}
+                    style={{ padding: '0.25rem 0.6rem', borderRadius: '99px', border: '1.5px solid', borderColor: activeSportFilter === s.id ? '#f59e0b' : '#e5e7eb', background: activeSportFilter === s.id ? '#fef3c7' : '#f9fafb', color: activeSportFilter === s.id ? '#92400e' : '#6b7280', fontSize: '0.78rem', fontWeight: activeSportFilter === s.id ? 700 : 500, cursor: 'pointer' }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        }
+        leagues={displayedLeagues}
         user={user}
-        emptyMessage="You have not joined any leagues yet."
+        emptyMessage={activeSportFilter ? `No ${sports.find(s => s.id === activeSportFilter)?.label ?? activeSportFilter} leagues yet.` : "You have not joined any leagues yet."}
         onOpenLeague={onOpenLeague}
       />
 
