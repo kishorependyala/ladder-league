@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, signup, type League, type RolesResponse, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
+import DataBrowser from './DataBrowser';
+import AppConfigView from './AppConfigView';
 
 type SuperAdminPanelProps = {
   sessionUser: User;
@@ -11,7 +13,7 @@ type SuperAdminPanelProps = {
   onUsersChanged?: () => void;
 };
 
-type SubTab = 'leagues' | 'users' | 'create';
+type SubTab = 'leagues' | 'users' | 'create' | 'data' | 'config';
 
 const DELETE_PIN = '1234567';
 
@@ -63,9 +65,15 @@ function SuperAdminPanel({ sessionUser, impersonating, onImpersonate, onReturn, 
       </div>
 
       {/* sub-tab bar */}
-      <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid #fed7aa', background: '#fff', padding: '0 1rem', borderRadius: '1rem 1rem 0 0', boxShadow: '0 2px 8px rgba(120,53,15,0.06)' }}>
-        {([['leagues', '🏆', 'Leagues'], ['users', '👥', 'Users'], ['create', '➕', 'Create League']] as [SubTab, string, string][]).map(([id, emoji, label]) => (
-          <button key={id} onClick={() => setSubTab(id)} style={{ padding: '0.75rem 1.1rem', background: 'none', border: 'none', borderBottom: subTab === id ? '3px solid #f59e0b' : '3px solid transparent', color: subTab === id ? '#92400e' : '#6b7280', fontWeight: subTab === id ? 700 : 500, fontSize: '0.9rem', cursor: 'pointer', marginBottom: '-2px', transition: 'all 0.15s' }}>
+      <div style={{ display: 'flex', gap: '0', borderBottom: '2px solid #fed7aa', background: '#fff', padding: '0 0.5rem', borderRadius: '1rem 1rem 0 0', boxShadow: '0 2px 8px rgba(120,53,15,0.06)', overflowX: 'auto' }}>
+        {([
+          ['leagues', '🏆', 'Leagues'],
+          ['users', '👥', 'Users'],
+          ['create', '➕', 'Create'],
+          ['data', '📁', 'Data Files'],
+          ['config', '⚙️', 'App Config'],
+        ] as [SubTab, string, string][]).map(([id, emoji, label]) => (
+          <button key={id} onClick={() => setSubTab(id)} style={{ padding: '0.75rem 0.9rem', background: 'none', border: 'none', borderBottom: subTab === id ? '3px solid #f59e0b' : '3px solid transparent', color: subTab === id ? '#92400e' : '#6b7280', fontWeight: subTab === id ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', marginBottom: '-2px', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
             {emoji} {label}
           </button>
         ))}
@@ -98,6 +106,8 @@ function SuperAdminPanel({ sessionUser, impersonating, onImpersonate, onReturn, 
           onFail={fail}
         />
       )}
+      {subTab === 'data' && <DataBrowser phone={sessionUser.phone} />}
+      {subTab === 'config' && <AppConfigView phone={sessionUser.phone} />}
     </div>
   );
 }

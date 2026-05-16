@@ -50,6 +50,10 @@ SCORES_DIR = os.path.join(DATA_DIR, 'scores')
 USERS_DIR = os.path.join(DATA_DIR, 'users')
 LEAGUES_FILE = os.path.join(DATA_DIR, 'leagues.json')
 
+# Ensure persistent directories exist on startup (critical for Azure /home mount)
+for _d in [DATA_DIR, USERS_DIR, os.path.join(DATA_DIR, 'config'), os.path.join(DATA_DIR, 'sports')]:
+    os.makedirs(_d, exist_ok=True)
+
 # ── User storage helpers ────────────────────────────────────────────
 
 def _next_user_id() -> str:
@@ -972,3 +976,116 @@ def api_delete_league(league_id: str, phone: str = Query(...)):
         return {"success": False, "message": "League not found"}
     return {"success": True, "message": f"League {league_id} deleted"}
 
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  DATA BROWSER & APP CONFIG  (super-admin only)
+# ═══════════════════════════════════════════════════════════════════
+
+def _safe_rel(path: str) -> str:
+    """Normalise a user-supplied relative path so it can't escape DATA_DIR."""
+    # Strip leading slashes / dots to prevent directory traversal
+    clean = os.path.normpath(path.lstrip("/").lstrip(".")) if path else "."
+    if clean == ".":
+        return ""
+    return clean
+
+
+@app.get("/api/admin/data/browse")
+def api_data_browse(phone: str = Query(...), path: str = Query(default="")):
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    rel = _safe_rel(path)
+    abs_path = os.path.join(DATA_DIR, rel) if rel else DATA_DIR
+    abs_path = os.path.abspath(abs_path)
+    # Guard: must still be inside DATA_DIR
+    if not abs_path.startswith(os.path.abspath(DATA_DIR)):
+        return {"success": False, "message": "Access denied"}
+    if not os.path.exists(abs_path):
+        return {"success": False, "message": "Path not found"}
+    if os.path.isfile(abs_path):
+        return {"success": False, "message": "Path is a file; use /api/admin/data/file"}
+    entries = []
+    try:
+        for name in sorted(os.listdir(abs_path)):
+            full = os.path.join(abs_path, name)
+            entry_rel = os.path.relpath(full, DATA_DIR)
+            stat = os.stat(full)
+            entries.append({
+                "name": name,
+                "type": "dir" if os.path.isdir(full) else "file",
+                "size": stat.st_size if os.path.isfile(full) else None,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "path": entry_rel,
+            })
+    except PermissionError:
+        return {"success": False, "message": "Permission denied"}
+    return {
+        "success": True,
+        "dataDir": DATA_DIR,
+        "currentPath": os.path.relpath(abs_path, DATA_DIR) if abs_path != DATA_DIR else "",
+        "entries": entries,
+    }
+
+
+@app.get("/api/admin/data/file")
+def api_data_file(phone: str = Query(...), path: str = Query(...)):
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    rel = _safe_rel(path)
+    abs_path = os.path.abspath(os.path.join(DATA_DIR, rel))
+    if not abs_path.startswith(os.path.abspath(DATA_DIR)):
+        return {"success": False, "message": "Access denied"}
+    if not os.path.isfile(abs_path):
+        return {"success": False, "message": "File not found"}
+    size = os.path.getsize(abs_path)
+    if size > 500_000:  # 500 KB cap
+        return {"success": False, "message": f"File too large to display ({size} bytes)"}
+    try:
+        with open(abs_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+        try:
+            content = json.loads(raw)
+            is_json = True
+        except Exception:
+            content = raw
+            is_json = False
+        return {"success": True, "path": rel, "size": size, "isJson": is_json, "content": content}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@app.get("/api/admin/config")
+def api_admin_config(phone: str = Query(...)):
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    from app.leagues import SPORTS, SPORT_LABELS, SPORT_SCORING, default_rules
+    superadmins = load_superadmin_phones()
+    # Count data files
+    total_files = sum(len(files) for _, _, files in os.walk(DATA_DIR))
+    user_count = len([f for f in os.listdir(USERS_DIR) if f.endswith(".json")]) if os.path.isdir(USERS_DIR) else 0
+    leagues_by_sport = {}
+    for sp in SPORTS:
+        ld = os.path.join(DATA_DIR, "sports", sp, "leagues")
+        if os.path.isdir(ld):
+            leagues_by_sport[sp] = len([f for f in os.listdir(ld) if f.endswith(".json")])
+        else:
+            leagues_by_sport[sp] = 0
+    return {
+        "success": True,
+        "config": {
+            "dataDir": DATA_DIR,
+            "environment": os.environ.get("WEBSITE_SITE_NAME", "local"),
+            "pythonVersion": __import__("sys").version,
+            "sports": [{"id": s, "label": SPORT_LABELS[s]} for s in SPORTS],
+            "superAdminCount": len(superadmins),
+            "superAdmins": superadmins,
+            "userCount": user_count,
+            "leagueCountBySport": leagues_by_sport,
+            "totalDataFiles": total_files,
+            "defaultRules": default_rules(),
+            "sportScoring": SPORT_SCORING,
+            "corsOrigins": ["*"],
+            "startedAt": datetime.now().isoformat(),
+        }
+    }

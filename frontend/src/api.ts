@@ -419,3 +419,49 @@ export function updateUserProfile(
     body: JSON.stringify(updates),
   });
 }
+
+// ── Data browser & App config (super-admin) ────────────────────────────────
+
+export interface DataEntry {
+  name: string;
+  type: 'file' | 'dir';
+  size: number | null;
+  modified: string;
+  path: string;
+}
+
+export interface DataBrowseResult {
+  success: boolean;
+  dataDir: string;
+  currentPath: string;
+  entries: DataEntry[];
+  message?: string;
+}
+
+export interface AppConfig {
+  dataDir: string;
+  environment: string;
+  pythonVersion: string;
+  sports: { id: string; label: string }[];
+  superAdminCount: number;
+  superAdmins: string[];
+  userCount: number;
+  leagueCountBySport: Record<string, number>;
+  totalDataFiles: number;
+  defaultRules: LeagueRules;
+  sportScoring: Record<string, SportScoring>;
+  corsOrigins: string[];
+  startedAt: string;
+}
+
+export function dataBrowse(phone: string, path = ''): Promise<DataBrowseResult> {
+  return get(`/api/admin/data/browse?phone=${encodeURIComponent(phone)}&path=${encodeURIComponent(path)}`);
+}
+
+export function dataReadFile(phone: string, path: string): Promise<{ success: boolean; path: string; size: number; isJson: boolean; content: unknown; message?: string }> {
+  return get(`/api/admin/data/file?phone=${encodeURIComponent(phone)}&path=${encodeURIComponent(path)}`);
+}
+
+export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
+  return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);
+}
