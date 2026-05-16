@@ -472,10 +472,12 @@ def default_rules() -> dict:
             "loss": 0,
             "noGame": -1,
         },
-        # None means "use sport default from SPORT_SCORING"
         "scoringFormat": None,
         "matchFormat": "adhoc",
         "minMatchesPerWeek": 1,
         "penaltyPerMissedWeek": 1,
         "upsetBonus": 1,
+        # allowLateJoin: players can self-join after draft stage
+        # False = only admin can add players once ranking starts
+        "allowLateJoin": False,
     }

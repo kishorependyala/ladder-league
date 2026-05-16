@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { getAllLeagues, getMyRoles, getSports, joinLeague, type League, type RolesResponse, type Sport, type User } from '../api';
+import { getAllLeagues, getMyRoles, getSports, isLeagueJoinable, joinLeague, type League, type RolesResponse, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueList from './LeagueList';
 
@@ -16,6 +16,7 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [joiningLeagueId, setJoiningLeagueId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [joinError, setJoinError] = useState('');
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -45,23 +46,31 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
     setLoading(false);
   }, [user.id, user.phone]);
 
-  useEffect(() => {
-    loadDashboard();
-  }, [loadDashboard]);
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
   const myLeagues = useMemo(
     () => leagues.filter(league => league.players.some(player => player.id === user.id || player.phone === user.phone)),
     [leagues, user.id, user.phone],
   );
 
-  const joinableLeagues = useMemo(
-    () => leagues.filter(
-      l => l.status === 'draft' &&
-        !l.players.some(p => p.id === user.id || p.phone === user.phone),
-    ),
-    [leagues, user.id, user.phone],
-  );
-  const [browseId, setBrowseId] = useState('');
+  // All leagues the user is NOT in, grouped by sport
+  const joinableBySport = useMemo(() => {
+    const notMine = leagues.filter(
+      l => !l.players.some(p => p.id === user.id || p.phone === user.phone)
+    );
+    const map: Record<string, { open: League[]; closed: League[] }> = {};
+    for (const sport of sports) {
+      const sportLeagues = notMine.filter(l => l.sport === sport.id);
+      map[sport.id] = {
+        open: sportLeagues.filter(isLeagueJoinable),
+        closed: sportLeagues.filter(l => !isLeagueJoinable(l)),
+      };
+    }
+    return map;
+  }, [leagues, sports, user.id, user.phone]);
+
+  // Per-sport selected league id
+  const [selectedBySport, setSelectedBySport] = useState<Record<string, string>>({});
 
   const rankingNeeded = useMemo(
     () => myLeagues.filter(l => ['draft', 'ranking', 'ranked'].includes(l.status) && !l.stackRanks?.[user.id]),
@@ -70,16 +79,22 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
 
   const handleJoinLeague = async (league: League) => {
     setJoiningLeagueId(league.id);
-    setError('');
+    setJoinError('');
     try {
       const response = await joinLeague(league.id, user.phone);
-      await loadDashboard();
-      onOpenLeague(response.league);
+      if (!response.success) { setJoinError(response.message || 'Could not join league.'); }
+      else { await loadDashboard(); onOpenLeague(response.league); }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not join league.');
+      setJoinError(err instanceof Error ? err.message : 'Could not join league.');
     }
     setJoiningLeagueId(null);
   };
+
+  // Determine if any sport has leagues worth showing in Browse
+  const hasBrowseable = sports.some(s => {
+    const g = joinableBySport[s.id];
+    return g && (g.open.length > 0 || g.closed.length > 0);
+  });
 
   return (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
@@ -89,9 +104,7 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
             <h2 style={sectionTitle}>Welcome back, {user.firstName}</h2>
             <p style={{ ...mutedText, marginTop: '0.3rem' }}>Submit results and keep the ladder moving.</p>
           </div>
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <span style={{ ...S.infoBox, padding: '0.55rem 0.8rem' }}>{myLeagues.length} joined</span>
-          </div>
+          <span style={{ ...S.infoBox, padding: '0.55rem 0.8rem' }}>{myLeagues.length} joined</span>
         </div>
         {error && <div style={S.errorBox}>{error}</div>}
         {loading && <p style={mutedText}>Loading…</p>}
@@ -118,31 +131,63 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
         onOpenLeague={onOpenLeague}
       />
 
-      <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
+      {/* Browse leagues — one row per sport */}
+      <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
         <h3 style={subheading}>Browse leagues</h3>
-        {joinableLeagues.length === 0 ? (
-          <p style={mutedText}>No open leagues to join right now.</p>
+        {joinError && <div style={S.errorBox}>{joinError}</div>}
+
+        {!hasBrowseable ? (
+          <p style={mutedText}>No leagues available to join right now.</p>
         ) : (
-          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <select
-              value={browseId}
-              onChange={e => setBrowseId(e.target.value)}
-              style={{ ...S.select, flex: '1 1 200px' }}
-            >
-              <option value="">— Select a league —</option>
-              {joinableLeagues.map(l => (
-                <option key={l.id} value={l.id}>{l.name} ({l.sport})</option>
-              ))}
-            </select>
-            {browseId && (
-              <button
-                style={S.smallBtn}
-                disabled={joiningLeagueId === browseId}
-                onClick={() => handleJoinLeague(joinableLeagues.find(l => l.id === browseId)!)}
-              >
-                {joiningLeagueId === browseId ? 'Joining…' : 'Request to join'}
-              </button>
-            )}
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {sports.map(sport => {
+              const group = joinableBySport[sport.id] ?? { open: [], closed: [] };
+              const allForSport = [...group.open, ...group.closed];
+              if (allForSport.length === 0) return null;
+              const hasOpen = group.open.length > 0;
+              const selectedId = selectedBySport[sport.id] ?? '';
+              const selectedLeague = group.open.find(l => l.id === selectedId) ?? null;
+
+              return (
+                <div key={sport.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '0.75rem', background: hasOpen ? '#fffbeb' : '#f9fafb', borderRadius: '0.85rem', border: `1px solid ${hasOpen ? '#fde68a' : '#e5e7eb'}` }}>
+                  {/* Sport label */}
+                  <div style={{ minWidth: 90 }}>
+                    <span style={{ fontWeight: 700, color: hasOpen ? '#78350f' : '#9ca3af', fontSize: '0.9rem' }}>
+                      {sport.label}
+                    </span>
+                    {!hasOpen && group.closed.length > 0 && (
+                      <div style={{ fontSize: '0.72rem', color: '#9ca3af', marginTop: '0.1rem' }}>
+                        {group.closed.length} closed
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dropdown */}
+                  <select
+                    value={selectedId}
+                    disabled={!hasOpen}
+                    onChange={e => setSelectedBySport(prev => ({ ...prev, [sport.id]: e.target.value }))}
+                    style={{ ...S.inp, flex: '1 1 160px', background: hasOpen ? '#fff' : '#f3f4f6', color: hasOpen ? '#1f2937' : '#9ca3af', cursor: hasOpen ? 'pointer' : 'not-allowed', opacity: hasOpen ? 1 : 0.6 }}
+                  >
+                    <option value="">{hasOpen ? `— Select a league (${group.open.length} open) —` : 'No open leagues'}</option>
+                    {group.open.map(l => (
+                      <option key={l.id} value={l.id}>
+                        {l.name} · {l.status}{l.rules?.allowLateJoin && l.status !== 'draft' ? ' (late join)' : ''}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Join button */}
+                  <button
+                    style={{ ...S.smallBtn, opacity: selectedLeague ? 1 : 0.4 }}
+                    disabled={!selectedLeague || joiningLeagueId === selectedId}
+                    onClick={() => selectedLeague && handleJoinLeague(selectedLeague)}
+                  >
+                    {joiningLeagueId === selectedId ? 'Joining…' : '→ Join'}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

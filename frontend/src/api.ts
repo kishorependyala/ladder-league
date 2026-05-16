@@ -65,6 +65,7 @@ export interface LeagueRules {
   minMatchesPerWeek: number;
   penaltyPerMissedWeek: number;
   upsetBonus: number;
+  allowLateJoin: boolean;
 }
 
 export interface ScoringFormat {
@@ -275,8 +276,16 @@ export function createLeague(
   return post('/api/leagues/create', { phone, name, sport, startDate, endDate, ...(rules ? { rules } : {}) });
 }
 
-export function joinLeague(id: string, phone: string): Promise<{ success: boolean; league: League }> {
+export function joinLeague(id: string, phone: string): Promise<{ success: boolean; league: League; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(id)}/join`, { phone });
+}
+
+/** Returns true if a league is open for self-join by a non-member. */
+export function isLeagueJoinable(league: League): boolean {
+  const { status, rules } = league;
+  if (status === 'draft') return true;
+  if (['ranking', 'ranked', 'active'].includes(status) && rules?.allowLateJoin) return true;
+  return false;
 }
 
 export function addPlayer(id: string, phone: string, targetPhone: string): Promise<{ success: boolean; league: League }> {

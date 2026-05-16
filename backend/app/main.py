@@ -416,12 +416,32 @@ def api_join_league(league_id: str, data: dict = Body(...)):
     lg = get_league_by_id(league_id)
     if not lg:
         return {"success": False, "message": "League not found"}
-    if lg["status"] not in ("draft",):
-        return {"success": False, "message": "League is not open for joining"}
+
+    # Check player isn't already in the league
     if any(p["id"] == user["id"] for p in lg["players"]):
-        return {"success": False, "message": "Already in league"}
-    lg["players"].append({"id": user["id"], "phone": user["phone"],
-                           "firstName": user["firstName"], "lastName": user["lastName"]})
+        return {"success": False, "message": "You are already a member of this league"}
+
+    rules = lg.get("rules", default_rules())
+    allow_late = rules.get("allowLateJoin", False)
+    status = lg["status"]
+
+    # Open statuses: draft is always open for self-join
+    # ranking/ranked/active only open if allowLateJoin is enabled
+    if status == "draft":
+        pass  # always open
+    elif status in ("ranking", "ranked", "active") and allow_late:
+        pass  # open by admin rule
+    elif status in ("playoffs", "completed"):
+        return {"success": False, "message": "This league has already concluded"}
+    else:
+        return {"success": False, "message": "This league is not open for new members"}
+
+    lg["players"].append({
+        "id": user["id"],
+        "phone": user["phone"],
+        "firstName": user["firstName"],
+        "lastName": user["lastName"],
+    })
     save_league(lg)
     return {"success": True, "league": lg}
 

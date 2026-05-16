@@ -49,6 +49,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(league.rules?.minMatchesPerWeek ?? 1);
   const [penaltyPerMissedWeek, setPenaltyPerMissedWeek] = useState(league.rules?.penaltyPerMissedWeek ?? 1);
   const [upsetBonus, setUpsetBonus] = useState(league.rules?.upsetBonus ?? 1);
+  const [allowLateJoin, setAllowLateJoin] = useState(league.rules?.allowLateJoin ?? false);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -87,6 +88,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         minMatchesPerWeek,
         penaltyPerMissedWeek,
         upsetBonus,
+        allowLateJoin,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -111,6 +113,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         minMatchesPerWeek: 1,
         penaltyPerMissedWeek: 1,
         upsetBonus: 1,
+        allowLateJoin: false,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -284,6 +287,28 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         )}
       </Section>
 
+      {/* ── Membership ── */}
+      <Section title="🚪 Membership">
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.75rem', background: allowLateJoin ? '#f0fdf4' : '#f9fafb', borderRadius: '0.75rem', border: `1px solid ${allowLateJoin ? '#bbf7d0' : '#e5e7eb'}`, transition: 'all 0.15s' }}>
+          <div
+            onClick={() => setAllowLateJoin(v => !v)}
+            style={{ width: 40, height: 22, borderRadius: 99, background: allowLateJoin ? '#22c55e' : '#d1d5db', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
+          >
+            <div style={{ position: 'absolute', top: 3, left: allowLateJoin ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+          </div>
+          <div>
+            <div style={{ fontWeight: 600, color: allowLateJoin ? '#15803d' : '#374151', fontSize: '0.9rem' }}>
+              Allow players to join after ranking
+            </div>
+            <div style={{ ...mutedText, fontSize: '0.78rem', marginTop: '0.15rem' }}>
+              {allowLateJoin
+                ? 'Players can self-join while the league is in ranking, ranked, or active status'
+                : 'Only admin can add players once ranking has started'}
+            </div>
+          </div>
+        </label>
+      </Section>
+
       <div style={{ background: '#f0fdf4', borderRadius: '0.75rem', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#166534', border: '1px solid #bbf7d0' }}>
         <strong>Effective rules:</strong> First to win {customWins} {customWins === 1 ? sportDefault.unit : sportDefault.unit_plural}
         · {effectivePoints} pts/{sportDefault.unit}
@@ -291,6 +316,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         · {matchFormat === 'adhoc' ? ' ad-hoc scheduling' : ' round-robin scheduling'}
         · {minMatchesPerWeek}/week minimum
         · upset bonus {upsetBonus}
+        · {allowLateJoin ? 'late join ON' : 'late join OFF'}
       </div>
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
