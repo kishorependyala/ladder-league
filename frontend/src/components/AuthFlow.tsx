@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { authCheckPhone, getAllUsers, loginWithPin, requestPinReset, signup, verifyPinReset, type User } from '../api';
+import { authCheckPhone, loginWithPin, requestPinReset, signup, verifyPinReset, type User } from '../api';
 import { SPORT_SCORING } from '../api';
 import { S } from '../theme';
 
@@ -15,7 +15,6 @@ type AuthStep = 'phone' | 'pin' | 'forgot' | 'reset-code' | 'signup-name' | 'sig
 function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   const [step, setStep] = useState<AuthStep>('phone');
   const [phone, setPhone] = useState('');
-  const [query, setQuery] = useState('');          // typeahead input value
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [firstName, setFirstName] = useState('');
@@ -28,55 +27,20 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    getAllUsers().then(users => {
-      if (Array.isArray(users)) setAllUsers(users);
-    }).catch(() => {});
-  }, []);
+  // suppress unused warning — maskedEmail shown in info message
+  void maskedEmail;
 
-  // Filter users for typeahead
-  const suggestions = (() => {
-    const q = query.trim().toLowerCase();
-    if (!q || q.length < 2) return [];
-    return allUsers.filter(u => {
-      const full = `${u.firstName} ${u.lastName}`.toLowerCase();
-      const phone = u.phone.toLowerCase();
-      return full.includes(q) || phone.includes(q);
-    }).slice(0, 6);
-  })();
+  useEffect(() => { inputRef.current?.focus(); }, [step]);
 
-  // Dismiss suggestions on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (!suggestionsRef.current?.contains(e.target as Node) && !inputRef.current?.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const selectSuggestion = (u: User) => {
-    setPhone(u.phone);
-    setQuery(`${u.firstName} ${u.lastName}`);
-    setShowSuggestions(false);
-    handlePhoneContinue(u.phone);
-  };
-
-  const handlePhoneContinue = async (overridePhone?: string) => {
-    // Try to parse phone from query if no explicit phone
-    const rawPhone = overridePhone ?? phone;
-    const resolvedPhone = rawPhone || query.replace(/\D/g, '');
-    if (!resolvedPhone) { setError('Please enter your name or phone number.'); return; }
+  const handlePhoneContinue = async () => {
+    const cleaned = phone.replace(/\D/g, '');
+    if (!cleaned) { setError('Please enter your phone number.'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await authCheckPhone(resolvedPhone);
-      setPhone(resolvedPhone);
+      const data = await authCheckPhone(cleaned);
+      setPhone(cleaned);
       setStep(data.exists ? 'pin' : 'signup-name');
     } catch {
       setError('Could not reach server. Please try again.');
@@ -142,10 +106,10 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   };
 
   const pinInput = (value: string, onChange: (v: string) => void, onEnter?: () => void) => (
-    <input type="password" inputMode="numeric" maxLength={4} placeholder="••••"
+    <input ref={inputRef} type="password" inputMode="numeric" maxLength={4} placeholder="••••"
       value={value} onChange={e => onChange(e.target.value.replace(/\D/g, ''))}
       onKeyDown={e => e.key === 'Enter' && onEnter?.()}
-      style={{ ...S.inp, letterSpacing: '0.4em', fontSize: '1.4rem', textAlign: 'center' }} autoFocus />
+      style={{ ...S.inp, letterSpacing: '0.4em', fontSize: '1.4rem', textAlign: 'center' }} />
   );
 
   const backBtn = (toStep: AuthStep, label = '← Back') => (
@@ -165,68 +129,24 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
 
         {step === 'phone' && (<>
           <div style={S.fieldGroup}>
-            <label style={S.label}>Who are you?</label>
-            <div style={{ position: 'relative' }}>
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Type your name or phone number…"
-                value={query}
-                onChange={e => { setQuery(e.target.value); setPhone(''); setShowSuggestions(true); setError(''); }}
-                onFocus={() => setShowSuggestions(true)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') { setShowSuggestions(false); handlePhoneContinue(); }
-                  if (e.key === 'Escape') setShowSuggestions(false);
-                }}
-                style={S.inp}
-                autoFocus
-                autoComplete="off"
-              />
-              {showSuggestions && suggestions.length > 0 && (
-                <div
-                  ref={suggestionsRef}
-                  style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                    background: '#fff', borderRadius: '0 0 0.75rem 0.75rem',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-                    border: '1px solid #fde68a', borderTop: 'none',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {suggestions.map(u => (
-                    <button
-                      key={u.id}
-                      onMouseDown={e => { e.preventDefault(); selectSuggestion(u); }}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '0.65rem 0.9rem', background: 'none', border: 'none',
-                        borderBottom: '1px solid #fef3c7', cursor: 'pointer',
-                        textAlign: 'left', gap: '0.5rem',
-                        transition: 'background 0.1s',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#fffbeb')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                        <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#fef3c7', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#92400e', flexShrink: 0 }}>
-                          {u.firstName[0]}{u.lastName[0]}
-                        </div>
-                        <span style={{ fontWeight: 600, color: '#1f2937', fontSize: '0.9rem' }}>{u.firstName} {u.lastName}</span>
-                      </div>
-                      <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>
-                        ···{u.phone.slice(-4)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <p style={{ margin: '0.3rem 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
-              New player? Just enter your phone number to sign up.
+            <label style={S.label}>Phone number</label>
+            <input
+              ref={inputRef}
+              type="tel"
+              inputMode="numeric"
+              placeholder="Enter your phone number"
+              value={phone}
+              onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handlePhoneContinue()}
+              style={S.inp}
+              autoComplete="tel"
+            />
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.78rem', color: '#9ca3af' }}>
+              Already have an account? We'll sign you in. New? We'll sign you up.
             </p>
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
-          <button onClick={() => handlePhoneContinue()} style={S.primaryBtn} disabled={loading || (!phone && !query.trim())}>
+          <button onClick={handlePhoneContinue} style={S.primaryBtn} disabled={loading || !phone.trim()}>
             {loading ? 'Checking…' : 'Continue →'}
           </button>
           {IS_LOCAL && (
@@ -267,7 +187,7 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           </button>
           <div style={{ textAlign: 'center', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
             <button onClick={() => { setStep('forgot'); setError(''); }} style={S.linkBtn}>Forgot PIN?</button>
-            {backBtn('phone', '← Change')}
+            {backBtn('phone', '← Change number')}
           </div>
         </>)}
 
@@ -286,9 +206,9 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           {info && <div style={S.successBox}>{info}</div>}
           <div style={S.fieldGroup}>
             <label style={S.label}>Reset Code</label>
-            <input type="text" inputMode="numeric" maxLength={4} placeholder="4-digit code"
+            <input ref={inputRef} type="text" inputMode="numeric" maxLength={4} placeholder="4-digit code"
               value={resetCode} onChange={e => setResetCode(e.target.value.replace(/\D/g, ''))}
-              style={{ ...S.inp, letterSpacing: '0.4em', fontSize: '1.4rem', textAlign: 'center' }} autoFocus />
+              style={{ ...S.inp, letterSpacing: '0.4em', fontSize: '1.4rem', textAlign: 'center' }} />
           </div>
           <div style={S.fieldGroup}>
             <label style={S.label}>New PIN</label>
@@ -308,8 +228,8 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
             <div style={S.fieldGroup}>
               <label style={S.label}>First Name</label>
-              <input type="text" placeholder="First" value={firstName}
-                onChange={e => setFirstName(e.target.value)} style={S.inp} autoFocus />
+              <input ref={inputRef} type="text" placeholder="First" value={firstName}
+                onChange={e => setFirstName(e.target.value)} style={S.inp} />
             </div>
             <div style={S.fieldGroup}>
               <label style={S.label}>Last Name</label>
@@ -327,17 +247,17 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
 
         {step === 'signup-email' && (<>
           <p style={{ margin: 0, textAlign: 'center', color: '#6b7280', fontSize: '0.9rem' }}>
-            Add your email for PIN resets.
+            Add your email for PIN resets. <span style={{ color: '#9ca3af' }}>(optional)</span>
           </p>
           <div style={S.fieldGroup}>
             <label style={S.label}>Email Address</label>
-            <input type="email" placeholder="you@example.com" value={email}
+            <input ref={inputRef} type="email" placeholder="you@example.com (optional)" value={email}
               onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && email.includes('@')) { setError(''); setStep('signup-sport'); } }}
-              style={S.inp} autoFocus />
+              onKeyDown={e => { if (e.key === 'Enter') { setError(''); setStep('signup-sport'); } }}
+              style={S.inp} />
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
-          <button onClick={() => { if (!email || !email.includes('@')) { setError('Valid email is required.'); return; } setError(''); setStep('signup-sport'); }} style={S.primaryBtn}>
+          <button onClick={() => { if (email && !email.includes('@')) { setError('Enter a valid email or leave blank.'); return; } setError(''); setStep('signup-sport'); }} style={S.primaryBtn}>
             Next →
           </button>
           {backBtn('signup-name')}
