@@ -365,3 +365,14 @@ export function deleteLeague(requesterPhone: string, leagueId: string): Promise<
   return fetch(`${API_BASE}/api/admin/leagues/${encodeURIComponent(leagueId)}?phone=${encodeURIComponent(requesterPhone)}`, { method: 'DELETE' })
     .then(res => res.json());
 }
+
+export function updateUserProfile(
+  userId: string,
+  updates: { firstName?: string; lastName?: string; email?: string },
+): Promise<{ success: boolean; user: User; message?: string }> {
+  return request(`/api/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+}

@@ -202,6 +202,19 @@ def login(data: dict = Body(...)):
 def all_users():
     return load_users()
 
+
+@app.put("/api/users/{user_id}")
+def api_update_user(user_id: str, data: dict = Body(...)):
+    user = get_user_by_id(user_id)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    for field in ("firstName", "lastName", "email"):
+        if field in data:
+            user[field] = data[field].strip() if isinstance(data[field], str) else data[field]
+    save_user(user)
+    return {"success": True, "user": user}
+
+
 @app.post("/api/join-league")
 def join_league(data: dict = Body(...)):
     league = data.get('league')

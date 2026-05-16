@@ -8,6 +8,7 @@ import LeagueDashboard from './components/LeagueDashboard';
 import LeagueStandings from './components/LeagueStandings';
 import RankingPhase from './components/RankingPhase';
 import SuperAdminPanel from './components/SuperAdminPanel';
+import UserProfile from './components/UserProfile';
 import { S, mutedText, sectionTitle, statusPill } from './theme';
 
 type Tab = 'home' | 'league-admin' | 'super-admin';
@@ -62,6 +63,7 @@ function App() {
   const [roles, setRoles] = useState<RolesResponse | null>(null);
   const [sports, setSports] = useState<any[]>([]);
   const [allLeagues, setAllLeagues] = useState<League[]>([]);
+  const [showProfile, setShowProfile] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -172,7 +174,7 @@ function App() {
 
   return (
     <div style={S.shell}>
-      <AppHeader user={user} onLogout={handleLogout} onHome={handleHome} />
+      <AppHeader user={user} onLogout={handleLogout} onHome={handleHome} onProfile={() => setShowProfile(true)} />
       <TabBar tabs={tabs} active={selectedLeague ? tab : tab} onChange={t => { setTab(t); setSelectedLeague(null); }} />
       <main style={S.main}>
         {impersonating && (
@@ -187,6 +189,17 @@ function App() {
         )}
         {tabContent}
       </main>
+      {showProfile && user && (
+        <UserProfile
+          user={user}
+          onClose={() => setShowProfile(false)}
+          onUpdated={updated => {
+            localStorage.setItem('ladder_league_user', JSON.stringify(updated));
+            setUser(updated);
+            setShowProfile(false);
+          }}
+        />
+      )}
     </div>
   );
 }
