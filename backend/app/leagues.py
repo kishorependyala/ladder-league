@@ -474,4 +474,8 @@ def default_rules() -> dict:
         },
         # None means "use sport default from SPORT_SCORING"
         "scoringFormat": None,
+        "matchFormat": "adhoc",
+        "minMatchesPerWeek": 1,
+        "penaltyPerMissedWeek": 1,
+        "upsetBonus": 1,
     }

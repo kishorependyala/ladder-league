@@ -61,6 +61,10 @@ export interface LeagueRules {
     noGame: number;
   };
   scoringFormat?: ScoringFormat | null;
+  matchFormat: 'adhoc' | 'round-robin';
+  minMatchesPerWeek: number;
+  penaltyPerMissedWeek: number;
+  upsetBonus: number;
 }
 
 export interface ScoringFormat {
@@ -151,12 +155,23 @@ export interface Match {
   winner?: string;
 }
 
+export interface MatchLogEntry {
+  matchId: string;
+  opponentId: string;
+  result: 'win' | 'loss';
+  basePoints: number;
+  upsetBonus: number;
+  score?: MatchScore;
+  submittedAt?: string;
+}
+
 export interface StandingsRow {
-  rank: number;
+  player: Player;
   wins: number;
   losses: number;
   points: number;
-  player: Player;
+  rank: number;
+  matchLog: MatchLogEntry[];
 }
 
 export interface StandingsResponse {
@@ -249,8 +264,15 @@ export function getLeague(id: string): Promise<League> {
   return get(`/api/leagues/${encodeURIComponent(id)}`);
 }
 
-export function createLeague(phone: string, name: string, sport: string, startDate: string, endDate: string): Promise<{ success: boolean; league: League }> {
-  return post('/api/leagues/create', { phone, name, sport, startDate, endDate });
+export function createLeague(
+  phone: string,
+  name: string,
+  sport: string,
+  startDate: string,
+  endDate: string,
+  rules?: Partial<LeagueRules>,
+): Promise<{ success: boolean; league: League }> {
+  return post('/api/leagues/create', { phone, name, sport, startDate, endDate, ...(rules ? { rules } : {}) });
 }
 
 export function joinLeague(id: string, phone: string): Promise<{ success: boolean; league: League }> {
@@ -382,6 +404,7 @@ export function updateLeagueRules(
 ): Promise<{ success: boolean; league: League; message?: string }> {
   return request(`/api/leagues/${encodeURIComponent(leagueId)}/rules`, {
     method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone, rules }),
   });
 }

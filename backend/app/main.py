@@ -810,12 +810,14 @@ def api_league_playoffs(league_id: str):
 
 def _compute_league_standings(lg: dict) -> list[dict]:
     matches = list_matches(lg["sport"], lg["id"])
-    rules = lg.get("rules", default_rules())
+    rules = {**default_rules(), **lg.get("rules", {})}
     scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
+    final_ranking = lg.get("finalRanking", [])
+    ranking_positions = {player_id: index for index, player_id in enumerate(final_ranking)}
 
     stats: dict = {}
     for p in lg["players"]:
-        stats[p["id"]] = {"player": p, "wins": 0, "losses": 0, "points": 0, "rank": 0}
+        stats[p["id"]] = {"player": p, "wins": 0, "losses": 0, "points": 0, "rank": 0, "matchLog": []}
 
     for m in matches:
         if m.get("status") != "accepted" or m.get("isPlayoff"):
@@ -835,17 +837,45 @@ def _compute_league_standings(lg: dict) -> list[dict]:
                 opp_score = score.get("opponent", 0)
                 winner = sid if sub_score >= opp_score else oid
         loser = oid if winner == sid else sid
+
+        win_pts = scoring.get("win", 3)
+        loss_pts = scoring.get("loss", 0)
+        upset_bonus = 0
+        winner_seed = ranking_positions.get(winner)
+        loser_seed = ranking_positions.get(loser)
+        if winner_seed is not None and loser_seed is not None and winner_seed > loser_seed:
+            upset_bonus = rules.get("upsetBonus", 0)
+
+        submitted_at = m.get("submittedAt") or m.get("createdAt")
         if winner in stats:
             stats[winner]["wins"] += 1
-            stats[winner]["points"] += scoring.get("win", 3)
+            stats[winner]["points"] += win_pts + upset_bonus
+            stats[winner]["matchLog"].append({
+                "matchId": m["id"],
+                "opponentId": loser,
+                "result": "win",
+                "basePoints": win_pts,
+                "upsetBonus": upset_bonus,
+                "score": m.get("score"),
+                "submittedAt": submitted_at,
+            })
         if loser in stats:
             stats[loser]["losses"] += 1
-            stats[loser]["points"] += scoring.get("loss", 0)
+            stats[loser]["points"] += loss_pts
+            stats[loser]["matchLog"].append({
+                "matchId": m["id"],
+                "opponentId": winner,
+                "result": "loss",
+                "basePoints": loss_pts,
+                "upsetBonus": 0,
+                "score": m.get("score"),
+                "submittedAt": submitted_at,
+            })
 
-    final_ranking = lg.get("finalRanking", [p["id"] for p in lg["players"]])
+    tiebreak_ranking = final_ranking or [p["id"] for p in lg["players"]]
     sorted_stats = sorted(
         stats.values(),
-        key=lambda x: (-(x["points"]), final_ranking.index(x["player"]["id"]) if x["player"]["id"] in final_ranking else 999)
+        key=lambda x: (-(x["points"]), tiebreak_ranking.index(x["player"]["id"]) if x["player"]["id"] in tiebreak_ranking else 999)
     )
     for i, s in enumerate(sorted_stats):
         s["rank"] = i + 1

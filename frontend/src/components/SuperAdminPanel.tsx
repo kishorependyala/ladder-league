@@ -504,15 +504,43 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [sport, setSport] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [matchFormat, setMatchFormat] = useState<'adhoc' | 'round-robin'>('adhoc');
+  const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(1);
+  const [upsetBonus, setUpsetBonus] = useState(1);
   const [busy, setBusy] = useState(false);
+
+  const pillStyle = (active: boolean) => ({
+    padding: '0.45rem 0.9rem',
+    borderRadius: '99px',
+    border: '2px solid',
+    borderColor: active ? '#f59e0b' : '#e5e7eb',
+    background: active ? '#fef3c7' : '#fff',
+    color: active ? '#92400e' : '#6b7280',
+    fontWeight: active ? 700 : 500,
+    fontSize: '0.85rem',
+    cursor: 'pointer',
+  } as const);
 
   const handleCreate = async () => {
     if (!name || !sport || !start || !end) { onFail('All fields are required.'); return; }
     setBusy(true);
     try {
-      const res = await createLeague(sessionUser.phone, name, sport, start, end);
+      const rules = {
+        matchFormat,
+        minMatchesPerWeek,
+        upsetBonus,
+      };
+      const res = await createLeague(sessionUser.phone, name, sport, start, end, rules);
       onCreated(res.league);
-      setName(''); setSport(''); setStart(''); setEnd('');
+      setName('');
+      setSport('');
+      setStart('');
+      setEnd('');
+      setShowAdvanced(false);
+      setMatchFormat('adhoc');
+      setMinMatchesPerWeek(1);
+      setUpsetBonus(1);
     } catch (e) { onFail(e instanceof Error ? e.message : 'Could not create league.'); }
     setBusy(false);
   };
@@ -535,6 +563,56 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
           <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={S.inp} />
         </label>
       </div>
+
+      <div style={{ display: 'grid', gap: '0.75rem', border: '1px solid #fde68a', borderRadius: '0.85rem', padding: '0.9rem', background: '#fffbeb' }}>
+        <button
+          type="button"
+          style={{ ...S.smallOutlineBtn, justifySelf: 'start' }}
+          onClick={() => setShowAdvanced(value => !value)}
+        >
+          {showAdvanced ? '▾ Hide advanced rules' : '▸ Advanced rules'}
+        </button>
+
+        {showAdvanced && (
+          <div style={{ display: 'grid', gap: '0.9rem' }}>
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setMatchFormat('adhoc')} style={pillStyle(matchFormat === 'adhoc')}>
+                  Ad-hoc (anyone vs anyone)
+                </button>
+                <button type="button" onClick={() => setMatchFormat('round-robin')} style={pillStyle(matchFormat === 'round-robin')}>
+                  Round-robin (all vs all)
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week</label>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {[1, 2, 3].map(value => (
+                  <button key={value} type="button" onClick={() => setMinMatchesPerWeek(value)} style={pillStyle(minMatchesPerWeek === value)}>
+                    {value}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus</label>
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={upsetBonus}
+                onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+                style={{ ...S.inp, width: 96 }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       <button style={S.primaryBtn} disabled={busy} onClick={handleCreate}>
         {busy ? 'Creating…' : '+ Create league'}
       </button>
