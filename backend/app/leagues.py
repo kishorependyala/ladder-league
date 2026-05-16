@@ -51,12 +51,20 @@ SPORT_SCORING = {
 }
 
 
-def unit_winner(me: int, opp: int, sport: str) -> Optional[str]:
+def _resolve_scoring_cfg(sport: str, scoring_format: Optional[dict] = None) -> dict:
+    """Merge sport defaults with any per-league scoringFormat overrides."""
+    base = dict(SPORT_SCORING.get(sport, SPORT_SCORING["tennis"]))
+    if scoring_format:
+        base.update({k: v for k, v in scoring_format.items() if v is not None})
+    return base
+
+
+def unit_winner(me: int, opp: int, sport: str, scoring_format: Optional[dict] = None) -> Optional[str]:
     """Return 'me', 'opp', or None if the set/game is not yet decided."""
-    cfg = SPORT_SCORING.get(sport, SPORT_SCORING["tennis"])
+    cfg = _resolve_scoring_cfg(sport, scoring_format)
     hi, lo = max(me, opp), min(me, opp)
     side = "me" if me > opp else "opp"
-    if cfg["unit"] == "set":  # tennis
+    if cfg["unit"] == "set":  # tennis-style
         if hi == 6 and lo <= 4: return side
         if hi == 7 and lo in (5, 6): return side
         return None
@@ -67,12 +75,12 @@ def unit_winner(me: int, opp: int, sport: str) -> Optional[str]:
         return None
 
 
-def compute_match_winner(sets: list, sport: str) -> Optional[str]:
+def compute_match_winner(sets: list, sport: str, scoring_format: Optional[dict] = None) -> Optional[str]:
     """Return 'submitter', 'opponent', or None from a list of {me, opp} dicts."""
-    cfg = SPORT_SCORING.get(sport, SPORT_SCORING["tennis"])
+    cfg = _resolve_scoring_cfg(sport, scoring_format)
     me_wins = opp_wins = 0
     for s in sets:
-        w = unit_winner(s.get("me", 0), s.get("opp", 0), sport)
+        w = unit_winner(s.get("me", 0), s.get("opp", 0), sport, scoring_format)
         if w == "me": me_wins += 1
         elif w == "opp": opp_wins += 1
     wn = cfg["wins_needed"]
@@ -463,5 +471,7 @@ def default_rules() -> dict:
             "win": 3,
             "loss": 0,
             "noGame": -1,
-        }
+        },
+        # None means "use sport default from SPORT_SCORING"
+        "scoringFormat": None,
     }

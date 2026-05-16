@@ -253,23 +253,134 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
         </div>
       )}
 
-      {league.finalRanking.length > 0 && (
-        <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
-          <h3 style={subheading}>Final ranking</h3>
-          <div style={{ display: 'grid', gap: '0.45rem' }}>
-            {league.finalRanking.map((playerId, index) => (
-              <div key={playerId} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.65rem 0.8rem', borderRadius: '0.8rem', background: playerId === user.id ? '#f7fee7' : '#fff', border: `1px solid ${playerId === user.id ? '#a3e635' : '#e5e7eb'}` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 999, background: index === 0 ? '#f59e0b' : index === 1 ? '#9ca3af' : index === 2 ? '#cd7f32' : '#e5e7eb', color: index < 3 ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.82rem', flexShrink: 0 }}>
-                  {index + 1}
-                </div>
-                <span style={{ color: '#78350f', fontWeight: playerId === user.id ? 700 : 400 }}>
-                  {getDisplayName(playersById[playerId])}{playerId === user.id ? ' 👤' : ''}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {Object.keys(league.stackRanks || {}).length > 0 && (
+        <RankingOverview league={league} playersById={playersById} userId={user.id} />
       )}
+    </div>
+  );
+}
+
+// ── Anonymous ranking overview ─────────────────────────────────────────────
+
+type RankingOverviewProps = {
+  league: League;
+  playersById: Record<string, Player>;
+  userId: string;
+};
+
+function rankCellStyle(pos: number, n: number): React.CSSProperties {
+  const t = n <= 1 ? 0 : (pos - 1) / (n - 1); // 0 = best, 1 = worst
+  // green → amber → red gradient
+  const r = Math.round(t < 0.5 ? 22 + (245 - 22) * (t * 2) : 245 + (220 - 245) * ((t - 0.5) * 2));
+  const g = Math.round(t < 0.5 ? 163 + (158 - 163) * (t * 2) : 158 + (38 - 158) * ((t - 0.5) * 2));
+  const b = Math.round(t < 0.5 ? 74 + (11 - 74) * (t * 2) : 11);
+  return {
+    background: `rgba(${r},${g},${b},0.15)`,
+    color: `rgb(${r},${g},${b})`,
+    fontWeight: 700,
+    borderRadius: '0.45rem',
+    textAlign: 'center' as const,
+    padding: '0.35rem 0.2rem',
+    fontSize: '0.82rem',
+    minWidth: 32,
+  };
+}
+
+function RankingOverview({ league, playersById, userId }: RankingOverviewProps) {
+  const stackRanks = league.stackRanks || {};
+  const n = league.players.length;
+
+  // Stable-shuffle voter keys so no one can infer submission order from index
+  // Use a simple deterministic shuffle seeded by league.id
+  const voterKeys = useMemo(() => {
+    const keys = Object.keys(stackRanks).sort();
+    // Fisher-Yates seeded by sum of charCodes of league.id
+    const seed = league.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const arr = [...keys];
+    let s = seed;
+    for (let i = arr.length - 1; i > 0; i--) {
+      s = (s * 1664525 + 1013904223) & 0xffffffff;
+      const j = Math.abs(s) % (i + 1);
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }, [stackRanks, league.id]);
+
+  // Compute avg rank and final position per player
+  const finalPositions: Record<string, number> = {};
+  league.finalRanking.forEach((id, i) => { finalPositions[id] = i + 1; });
+
+  // Order rows by finalRanking if available, else by first submission
+  const orderedPlayers = league.finalRanking.length > 0
+    ? league.finalRanking.map(id => playersById[id]).filter(Boolean)
+    : league.players;
+
+  return (
+    <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
+      <div>
+        <h3 style={subheading}>
+          Rankings overview{' '}
+          <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#9ca3af' }}>· votes are anonymous</span>
+        </h3>
+        <p style={{ ...mutedText, fontSize: '0.82rem', marginTop: '0.25rem' }}>
+          Each column is one voter's ranking. Cells show the position they gave each player (1 = best). Final rank is the Borda count result.
+        </p>
+      </div>
+
+      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' as unknown as undefined }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 300 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem 0.4rem 0', fontSize: '0.78rem', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap', minWidth: 110 }}>Player</th>
+              {voterKeys.map((_, i) => (
+                <th key={i} style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, textAlign: 'center', minWidth: 36 }}>
+                  #{i + 1}
+                </th>
+              ))}
+              <th style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, textAlign: 'center', minWidth: 40 }}>Avg</th>
+              {league.finalRanking.length > 0 && (
+                <th style={{ padding: '0.4rem 0.25rem 0.4rem 0.5rem', fontSize: '0.75rem', color: '#78350f', fontWeight: 700, textAlign: 'center', minWidth: 48 }}>Final</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {orderedPlayers.map(player => {
+              if (!player) return null;
+              const positions = voterKeys.map(key => {
+                const ranked = stackRanks[key] as string[];
+                const idx = ranked.indexOf(player.id);
+                return idx >= 0 ? idx + 1 : n + 1;
+              });
+              const avg = positions.length ? (positions.reduce((a, b) => a + b, 0) / positions.length) : null;
+              const isMe = player.id === userId;
+              return (
+                <tr key={player.id} style={{ borderTop: '1px solid #f3f4f6' }}>
+                  <td style={{ padding: '0.5rem 0.5rem 0.5rem 0', fontWeight: isMe ? 700 : 400, color: isMe ? '#78350f' : '#374151', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                    {getDisplayName(player)}{isMe ? ' 👤' : ''}
+                  </td>
+                  {positions.map((pos, i) => (
+                    <td key={i} style={{ padding: '0.35rem 0.25rem' }}>
+                      <div style={rankCellStyle(pos, n)}>{pos > n ? '—' : pos}</div>
+                    </td>
+                  ))}
+                  <td style={{ padding: '0.35rem 0.25rem' }}>
+                    <div style={{ ...rankCellStyle(avg ?? n, n), opacity: 0.85, fontSize: '0.78rem' }}>
+                      {avg !== null ? avg.toFixed(1) : '—'}
+                    </div>
+                  </td>
+                  {league.finalRanking.length > 0 && (
+                    <td style={{ padding: '0.35rem 0.25rem 0.35rem 0.5rem' }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 999, margin: '0 auto', background: finalPositions[player.id] === 1 ? '#f59e0b' : finalPositions[player.id] === 2 ? '#9ca3af' : finalPositions[player.id] === 3 ? '#cd7f32' : '#e5e7eb', color: (finalPositions[player.id] ?? 99) <= 3 ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.82rem' }}>
+                        {finalPositions[player.id] ?? '—'}
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

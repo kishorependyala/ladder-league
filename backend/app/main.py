@@ -720,8 +720,9 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
         m["resolvedAt"] = datetime.now().isoformat()
         score = m.get("score", {})
         sets = score.get("sets", [])
+        scoring_fmt = lg.get("rules", {}).get("scoringFormat")
         if sets:
-            m["winner"] = compute_match_winner(sets, lg["sport"])
+            m["winner"] = compute_match_winner(sets, lg["sport"], scoring_fmt)
         else:
             sub_score = score.get("submitter", 0)
             opp_score = score.get("opponent", 0)
@@ -826,7 +827,8 @@ def _compute_league_standings(lg: dict) -> list[dict]:
             score = m.get("score", {})
             sets = score.get("sets", [])
             if sets:
-                computed_winner = compute_match_winner(sets, lg["sport"])
+                scoring_fmt = rules.get("scoringFormat")
+                computed_winner = compute_match_winner(sets, lg["sport"], scoring_fmt)
                 winner = sid if computed_winner == "submitter" else oid
             else:
                 sub_score = score.get("submitter", 0)
@@ -906,6 +908,30 @@ def api_delete_user(user_id: str, phone: str = Query(...)):
         return {"success": False, "message": "User not found"}
     os.remove(path)
     return {"success": True, "message": f"User {user_id} deleted"}
+
+
+@app.put("/api/leagues/{league_id}/rules")
+def api_update_league_rules(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    if not phone:
+        return {"success": False, "message": "phone required"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not is_super_admin(phone) and phone not in [p.get("phone") for p in lg.get("players", [])] and \
+       get_user_by_phone(phone) and get_user_by_phone(phone)["id"] not in lg.get("adminIds", []):
+        return {"success": False, "message": "Not authorized"}
+    rules = lg.get("rules", default_rules())
+    incoming = data.get("rules", {})
+    # Deep merge: top-level keys merged, scoring sub-dict merged
+    for key, val in incoming.items():
+        if key == "scoring" and isinstance(val, dict):
+            rules["scoring"] = {**rules.get("scoring", {}), **val}
+        else:
+            rules[key] = val
+    lg["rules"] = rules
+    save_league(lg)
+    return {"success": True, "league": lg}
 
 
 @app.delete("/api/admin/leagues/{league_id}")

@@ -60,6 +60,15 @@ export interface LeagueRules {
     loss: number;
     noGame: number;
   };
+  scoringFormat?: ScoringFormat | null;
+}
+
+export interface ScoringFormat {
+  wins_needed: number;
+  max_units: number;
+  points_to_win: number;
+  win_by: number;       // 2 = need 2-point lead, 0 = first to target wins exactly
+  max_points: number | null;
 }
 
 export interface PlayoffMatchup {
@@ -364,6 +373,17 @@ export function deleteUser(requesterPhone: string, userId: string): Promise<{ su
 export function deleteLeague(requesterPhone: string, leagueId: string): Promise<{ success: boolean; message: string }> {
   return fetch(`${API_BASE}/api/admin/leagues/${encodeURIComponent(leagueId)}?phone=${encodeURIComponent(requesterPhone)}`, { method: 'DELETE' })
     .then(res => res.json());
+}
+
+export function updateLeagueRules(
+  leagueId: string,
+  phone: string,
+  rules: Partial<LeagueRules> & { scoringFormat?: ScoringFormat | null },
+): Promise<{ success: boolean; league: League; message?: string }> {
+  return request(`/api/leagues/${encodeURIComponent(leagueId)}/rules`, {
+    method: 'PUT',
+    body: JSON.stringify({ phone, rules }),
+  });
 }
 
 export function updateUserProfile(
