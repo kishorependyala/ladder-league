@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8080';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
 
 export interface SportScoring {
   unit: string;
