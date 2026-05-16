@@ -16,55 +16,53 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   const [message, setMessage] = useState('');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null); // tap-to-select index
 
-  // touch drag state
   const touchDragIndex = useRef<number | null>(null);
-  const touchClientY = useRef<number>(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getMyRoles(user.phone).then(setRoles).catch(() => setRoles(null));
   }, [user.phone]);
 
   const playersById = useMemo(
-    () => Object.fromEntries(league.players.map(player => [player.id, player])) as Record<string, Player>,
+    () => Object.fromEntries(league.players.map(p => [p.id, p])) as Record<string, Player>,
     [league.players],
   );
 
   useEffect(() => {
     const preferred = league.stackRanks[user.id] || league.finalRanking;
-    const fallback = league.players.map(player => player.id);
+    const fallback = league.players.map(p => p.id);
     const combined = (preferred.length ? preferred : fallback).filter(id => playersById[id]);
     const missing = fallback.filter(id => !combined.includes(id));
     setOrder([...combined, ...missing]);
   }, [league.finalRanking, league.players, league.stackRanks, playersById, user.id]);
 
   const reorder = (from: number, to: number) => {
-    if (from === to) return;
-    setOrder(current => {
-      const next = [...current];
+    if (from === to || to < 0 || to >= order.length) return;
+    setOrder(cur => {
+      const next = [...cur];
       const [item] = next.splice(from, 1);
       next.splice(to, 0, item);
       return next;
     });
+    setSelected(to);
   };
 
-  // ── HTML5 drag handlers ────────────────────────────────────────
-  const onDragStart = (index: number) => setDragIndex(index);
-  const onDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    setDragOverIndex(index);
-  };
-  const onDrop = (index: number) => {
-    if (dragIndex !== null) reorder(dragIndex, index);
-    setDragIndex(null);
-    setDragOverIndex(null);
-  };
-  const onDragEnd = () => { setDragIndex(null); setDragOverIndex(null); };
+  const moveUp   = (i: number) => reorder(i, i - 1);
+  const moveDown = (i: number) => reorder(i, i + 1);
+  const moveTop  = (i: number) => reorder(i, 0);
+  const moveBot  = (i: number) => reorder(i, order.length - 1);
 
-  // ── Touch handlers ─────────────────────────────────────────────
-  const onTouchStart = (e: React.TouchEvent, index: number) => {
-    touchDragIndex.current = index;
-    touchClientY.current = e.touches[0].clientY;
+  // ── Desktop drag ──────────────────────────────────────────────────
+  const onDragStart = (i: number) => { setDragIndex(i); setSelected(null); };
+  const onDragOver  = (e: React.DragEvent, i: number) => { e.preventDefault(); setDragOverIndex(i); };
+  const onDrop      = (i: number) => { if (dragIndex !== null) reorder(dragIndex, i); setDragIndex(null); setDragOverIndex(null); };
+  const onDragEnd   = () => { setDragIndex(null); setDragOverIndex(null); };
+
+  // ── Touch drag (long-press move on mobile) ─────────────────────────
+  const onTouchStart = (e: React.TouchEvent, i: number) => {
+    touchDragIndex.current = i;
   };
   const onTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
@@ -80,54 +78,44 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     setDragOverIndex(null);
   };
 
-  const isAdmin = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
+  const isAdmin    = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
   const submissions = Object.keys(league.stackRanks || {}).length;
   const hasSubmitted = Boolean(league.stackRanks?.[user.id]);
 
   const handleSubmit = async () => {
-    setLoading(true);
-    setError('');
-    setMessage('');
+    setLoading(true); setError(''); setMessage('');
     try {
-      const response = await submitRanking(league.id, user.phone, order);
-      onLeagueChange(response.league);
-      if (response.allDone) setMessage('🎉 Everyone has submitted — the admin can now finalize the ranking.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not submit ranking.');
-    }
+      const res = await submitRanking(league.id, user.phone, order);
+      onLeagueChange(res.league);
+      if (res.allDone) setMessage('🎉 Everyone has submitted — the admin can now finalize.');
+      else setMessage('✓ Ranking saved!');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not submit ranking.'); }
     setLoading(false);
   };
 
   const handleFinalize = async () => {
-    setLoading(true);
-    setError('');
-    setMessage('');
+    setLoading(true); setError(''); setMessage('');
     try {
-      const response = await finalizeRanking(league.id, user.phone, order);
-      onLeagueChange(response.league);
+      const res = await finalizeRanking(league.id, user.phone, order);
+      onLeagueChange(res.league);
       setMessage('Final ranking saved.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not finalize ranking.');
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not finalize.'); }
     setLoading(false);
   };
 
   const handleStartLeague = async () => {
-    setLoading(true);
-    setError('');
-    setMessage('');
+    setLoading(true); setError(''); setMessage('');
     try {
-      const response = await startLeague(league.id, user.phone);
-      onLeagueChange(response.league);
+      const res = await startLeague(league.id, user.phone);
+      onLeagueChange(res.league);
       setMessage('League is now active.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start league.');
-    }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not start league.'); }
     setLoading(false);
   };
 
   return (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
+      {/* Header card */}
       <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
@@ -137,18 +125,19 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           <span style={statusPill(league.status)}>{league.status}</span>
         </div>
 
-        {/* submission progress — one dot per player */}
+        {/* submission dots */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
             <span style={{ ...mutedText, fontSize: '0.82rem' }}>Submitted</span>
             <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem' }}>{submissions} / {league.players.length}</span>
           </div>
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-            {league.players.map((player, i) => {
-              const done = !!league.stackRanks?.[player.id];
-              const isMe = player.id === user.id;
+            {league.players.map((p, i) => {
+              const done = !!league.stackRanks?.[p.id];
+              const isMe = p.id === user.id;
               return (
-                <div key={player.id} title={done ? `${getDisplayName(player)} ✓` : `${getDisplayName(player)} — pending`} style={{ width: 32, height: 32, borderRadius: 999, background: done ? '#22c55e' : '#fde68a', border: `2px solid ${isMe ? '#f59e0b' : done ? '#16a34a' : '#fed7aa'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, color: done ? '#fff' : '#92400e', flexShrink: 0 }}>
+                <div key={p.id} title={done ? `${getDisplayName(p)} ✓` : `${getDisplayName(p)} — pending`}
+                  style={{ width: 32, height: 32, borderRadius: 999, background: done ? '#22c55e' : '#fde68a', border: `2px solid ${isMe ? '#f59e0b' : done ? '#16a34a' : '#fed7aa'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, color: done ? '#fff' : '#92400e' }}>
                   {done ? '✓' : i + 1}
                 </div>
               );
@@ -158,32 +147,31 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
 
         {!hasSubmitted && (
           <div style={S.infoBox}>
-            Drag rows to rank from <strong>strongest (1)</strong> to <strong>weakest ({league.players.length})</strong>. Rankings are private — you can update yours until the admin finalizes.
+            Rank from <strong>strongest → weakest</strong>. Tap a row to select it, then use the arrows — or drag on desktop. Rankings are private until finalized.
           </div>
         )}
-        {hasSubmitted && <div style={S.successBox}>✓ Ranking submitted — you can still drag to update before the admin finalizes.</div>}
+        {hasSubmitted && <div style={S.successBox}>✓ Submitted — you can still update before the admin finalizes.</div>}
         {error && <div style={S.errorBox}>{error}</div>}
         {message && <div style={S.successBox}>{message}</div>}
       </div>
 
-      {league.status === 'draft' && (
-        <div style={{ ...S.card, background: '#fffbeb', border: '1px solid #f59e0b' }}>
-          <p style={{ color: '#92400e', fontSize: '0.9rem' }}>📋 You can rank players at any time until the admin finalizes the ranking.</p>
-        </div>
-      )}
-
       {['draft', 'ranking', 'ranked'].includes(league.status) && (
         <div style={{ ...S.card, display: 'grid', gap: '0.75rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h3 style={subheading}>Your ranking {hasSubmitted && <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 400 }}>· submitted</span>}</h3>
-            <span style={{ ...mutedText, fontSize: '0.8rem' }}>☰ drag to reorder</span>
+            <h3 style={subheading}>
+              Your ranking {hasSubmitted && <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 400 }}>· saved</span>}
+            </h3>
+            <span style={{ ...mutedText, fontSize: '0.78rem' }}>Tap a card to select · use arrows to move</span>
           </div>
 
-          <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <div ref={listRef} style={{ display: 'grid', gap: '0.5rem' }}>
             {order.map((playerId, index) => {
               const isMe = playerId === user.id;
               const isDragging = dragIndex === index;
-              const isOver = dragOverIndex === index;
+              const isOver = dragOverIndex === index && dragIndex !== index;
+              const isSelected = selected === index;
+              const player = playersById[playerId];
+
               return (
                 <div
                   key={playerId}
@@ -196,47 +184,109 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
                   onTouchStart={e => onTouchStart(e, index)}
                   onTouchMove={onTouchMove}
                   onTouchEnd={onTouchEnd}
+                  onClick={() => setSelected(isSelected ? null : index)}
                   style={{
-                    display: 'grid',
-                    gridTemplateColumns: '44px 1fr 32px',
-                    gap: '0.75rem',
+                    display: 'flex',
                     alignItems: 'center',
-                    padding: '0.75rem 1rem',
+                    gap: '0.75rem',
+                    padding: '0.7rem 0.75rem',
                     borderRadius: '0.9rem',
-                    border: `2px solid ${isOver ? '#f59e0b' : isMe ? '#a3e635' : '#fed7aa'}`,
-                    background: isDragging ? '#fef3c7' : isOver ? '#fffbeb' : isMe ? '#f7fee7' : '#fff',
-                    cursor: 'grab',
-                    opacity: isDragging ? 0.5 : 1,
-                    transition: 'border-color 0.15s, background 0.15s, opacity 0.15s',
+                    border: `2px solid ${isSelected ? '#f59e0b' : isOver ? '#fb923c' : isMe ? '#a3e635' : '#fed7aa'}`,
+                    background: isSelected ? '#fef3c7' : isDragging ? '#fef9c3' : isOver ? '#fff7ed' : isMe ? '#f7fee7' : '#fff',
+                    opacity: isDragging ? 0.45 : 1,
+                    transition: 'border-color 0.12s, background 0.12s',
                     userSelect: 'none',
-                    boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,0.12)' : isOver ? '0 2px 8px rgba(245,158,11,0.25)' : 'none',
+                    cursor: 'pointer',
+                    boxShadow: isSelected ? '0 0 0 3px rgba(245,158,11,0.25)' : isOver ? '0 2px 8px rgba(251,146,60,0.2)' : 'none',
+                    touchAction: 'none',
                   }}
                 >
                   {/* rank badge */}
-                  <div style={{ width: 36, height: 36, borderRadius: 999, background: index === 0 ? '#f59e0b' : index === 1 ? '#9ca3af' : index === 2 ? '#cd7f32' : '#e5e7eb', color: index < 3 ? '#fff' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: '0.95rem' }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 999, flexShrink: 0,
+                    background: index === 0 ? '#f59e0b' : index === 1 ? '#9ca3af' : index === 2 ? '#cd7f32' : '#e5e7eb',
+                    color: index < 3 ? '#fff' : '#6b7280',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 800, fontSize: '1rem',
+                  }}>
                     {index + 1}
                   </div>
 
                   {/* name */}
-                  <div style={{ minWidth: 0 }}>
-                    <strong style={{ color: '#78350f', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {getDisplayName(playersById[playerId])}{isMe ? ' 👤' : ''}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <strong style={{ color: '#1f2937', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.95rem' }}>
+                      {getDisplayName(player)}{isMe ? ' 👤' : ''}
                     </strong>
+                    {isSelected && (
+                      <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>selected · use arrows →</span>
+                    )}
                   </div>
 
-                  {/* drag handle */}
-                  <div style={{ color: '#d1d5db', fontSize: '1.1rem', textAlign: 'center', cursor: 'grab', lineHeight: 1 }}>⠿</div>
+                  {/* move buttons — always visible, large touch targets */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                    <button
+                      onMouseDown={e => { e.stopPropagation(); moveUp(index); }}
+                      onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); moveUp(index); }}
+                      disabled={index === 0}
+                      title="Move up"
+                      style={{
+                        width: 36, height: 36, borderRadius: '0.5rem',
+                        border: '1.5px solid #e5e7eb', background: index === 0 ? '#f9fafb' : '#fff',
+                        color: index === 0 ? '#d1d5db' : '#374151',
+                        fontSize: '1rem', cursor: index === 0 ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 700, padding: 0, lineHeight: 1,
+                      }}
+                    >↑</button>
+                    <button
+                      onMouseDown={e => { e.stopPropagation(); moveDown(index); }}
+                      onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); moveDown(index); }}
+                      disabled={index === order.length - 1}
+                      title="Move down"
+                      style={{
+                        width: 36, height: 36, borderRadius: '0.5rem',
+                        border: '1.5px solid #e5e7eb', background: index === order.length - 1 ? '#f9fafb' : '#fff',
+                        color: index === order.length - 1 ? '#d1d5db' : '#374151',
+                        fontSize: '1rem', cursor: index === order.length - 1 ? 'default' : 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 700, padding: 0, lineHeight: 1,
+                      }}
+                    >↓</button>
+                  </div>
+
+                  {/* extreme-move buttons when selected */}
+                  {isSelected && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      <button
+                        onMouseDown={e => { e.stopPropagation(); moveTop(index); }}
+                        onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); moveTop(index); }}
+                        disabled={index === 0}
+                        title="Move to top"
+                        style={{ width: 36, height: 36, borderRadius: '0.5rem', border: '1.5px solid #fde68a', background: '#fef3c7', color: index === 0 ? '#d1d5db' : '#92400e', fontSize: '0.7rem', cursor: index === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, padding: 0, lineHeight: 1.1, textAlign: 'center' }}
+                      >⤒<br/>top</button>
+                      <button
+                        onMouseDown={e => { e.stopPropagation(); moveBot(index); }}
+                        onTouchEnd={e => { e.stopPropagation(); e.preventDefault(); moveBot(index); }}
+                        disabled={index === order.length - 1}
+                        title="Move to bottom"
+                        style={{ width: 36, height: 36, borderRadius: '0.5rem', border: '1.5px solid #fde68a', background: '#fef3c7', color: index === order.length - 1 ? '#d1d5db' : '#92400e', fontSize: '0.7rem', cursor: index === order.length - 1 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, padding: 0, lineHeight: 1.1, textAlign: 'center' }}
+                      >⤓<br/>bot</button>
+                    </div>
+                  )}
+
+                  {/* drag handle (desktop hint) */}
+                  <div style={{ color: '#d1d5db', fontSize: '1.1rem', cursor: 'grab', paddingLeft: '0.15rem', userSelect: 'none', flexShrink: 0 }}>⠿</div>
                 </div>
               );
             })}
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', paddingTop: '0.25rem' }}>
-            <button style={S.smallBtn} disabled={loading} onClick={handleSubmit}>
-              {loading ? 'Saving…' : hasSubmitted ? 'Update ranking' : 'Submit ranking'}
+            <button style={S.primaryBtn} disabled={loading} onClick={handleSubmit}>
+              {loading ? 'Saving…' : hasSubmitted ? '✓ Update ranking' : '✓ Submit ranking'}
             </button>
             {isAdmin && league.status !== 'draft' && (
-              <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Finalize ranking (admin)</button>
+              <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Finalize (admin)</button>
             )}
           </div>
         </div>
@@ -245,7 +295,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
       {league.status === 'ranked' && isAdmin && (
         <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
           <h3 style={subheading}>All rankings submitted</h3>
-          <p style={mutedText}>Borda count has determined the final ranking. Review below and start the league when ready.</p>
+          <p style={mutedText}>Borda count has determined the final ranking. Review and start the league when ready.</p>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button style={S.smallBtn} disabled={loading} onClick={handleStartLeague}>{loading ? 'Starting…' : 'Start league →'}</button>
             <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Re-finalize (override)</button>
