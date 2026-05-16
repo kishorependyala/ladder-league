@@ -125,19 +125,6 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
         {loading && <p style={mutedText}>Loading…</p>}
       </div>
 
-      {rankingNeeded.length > 0 && (
-        <div style={{ ...S.card, background: '#fffbeb', border: '2px solid #f59e0b', display: 'grid', gap: '0.6rem' }}>
-          <p style={{ fontWeight: 700, color: '#92400e', fontSize: '0.95rem' }}>📋 Ranking needed</p>
-          {rankingNeeded.map(l => (
-            <div key={l.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#78350f' }}>{l.name}</span>
-              <button style={S.smallBtn} onClick={() => onOpenLeague(l)}>Rank players →</button>
-            </div>
-          ))}
-          <p style={{ ...mutedText, fontSize: '0.8rem' }}>Rank all players from strongest to weakest. The admin will finalize once everyone has submitted.</p>
-        </div>
-      )}
-
       <LeagueList
         title={
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
