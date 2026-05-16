@@ -89,6 +89,22 @@ def get_user_by_phone(phone: str) -> Optional[dict]:
                 return u
     return None
 
+def get_user_by_id(user_id: str) -> Optional[dict]:
+    if not os.path.exists(USERS_DIR):
+        return None
+    path = os.path.join(USERS_DIR, f'{user_id}.json')
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            return json.load(f)
+    # Fallback: scan all files (handles id mismatches)
+    for fname in os.listdir(USERS_DIR):
+        if fname.endswith('.json'):
+            with open(os.path.join(USERS_DIR, fname), 'r') as f:
+                u = json.load(f)
+            if u.get('id') == user_id:
+                return u
+    return None
+
 def save_user(user: dict):
     os.makedirs(USERS_DIR, exist_ok=True)
     uid = user['id']
