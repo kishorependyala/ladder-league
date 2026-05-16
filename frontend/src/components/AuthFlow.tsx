@@ -1,6 +1,8 @@
-import { useState } from 'react';
-import { authCheckPhone, loginWithPin, requestPinReset, signup, verifyPinReset, type User } from '../api';
+import { useEffect, useState } from 'react';
+import { authCheckPhone, getAllUsers, loginWithPin, requestPinReset, signup, verifyPinReset, type User } from '../api';
 import { S } from '../theme';
+
+const IS_LOCAL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 type AuthStep = 'phone' | 'pin' | 'forgot' | 'reset-code' | 'signup-name' | 'signup-email' | 'signup-pin';
 
@@ -18,12 +20,21 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  const handlePhoneContinue = async () => {
-    if (!phone) { setError('Phone number is required.'); return; }
+  useEffect(() => {
+    getAllUsers().then(users => {
+      if (Array.isArray(users) && users.length < 10) setAllUsers(users);
+    }).catch(() => {});
+  }, []);
+
+  const handlePhoneContinue = async (overridePhone?: string) => {
+    const p = overridePhone ?? phone;
+    if (!p) { setError('Please select or enter a phone number.'); return; }
     setError(''); setLoading(true);
     try {
-      const data = await authCheckPhone(phone);
+      const data = await authCheckPhone(p);
+      setPhone(p);
       setStep(data.exists ? 'pin' : 'signup-name');
     } catch {
       setError('Could not reach server. Please try again.');
@@ -101,6 +112,8 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
     </div>
   );
 
+  const showDropdown = allUsers.length > 0 && allUsers.length < 10;
+
   return (
     <div style={S.authPage}>
       <div style={S.authCard}>
@@ -112,33 +125,51 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
 
         {step === 'phone' && (<>
           <div style={S.fieldGroup}>
-            <label style={S.label}>Phone Number</label>
-            <input type="tel" placeholder="e.g. 7321234567" value={phone}
-              onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={e => e.key === 'Enter' && handlePhoneContinue()}
-              style={S.inp} autoFocus />
+            <label style={S.label}>Who are you?</label>
+            {showDropdown ? (
+              <select
+                style={{ ...S.inp, cursor: 'pointer' }}
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                autoFocus
+              >
+                <option value="">— Select your name —</option>
+                {allUsers.map(u => (
+                  <option key={u.id} value={u.phone}>
+                    {u.firstName} {u.lastName} · {u.phone}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input type="tel" placeholder="e.g. 7321234567" value={phone}
+                onChange={e => setPhone(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={e => e.key === 'Enter' && handlePhoneContinue()}
+                style={S.inp} autoFocus />
+            )}
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
-          <button onClick={handlePhoneContinue} style={S.primaryBtn} disabled={loading}>
+          <button onClick={() => handlePhoneContinue()} style={S.primaryBtn} disabled={loading || !phone}>
             {loading ? 'Checking…' : 'Continue →'}
           </button>
-          <div style={{ textAlign: 'center' }}>
-            <button
-              onClick={async () => {
-                setLoading(true);
-                try {
-                  const data = await loginWithPin('7327184414', '0000');
-                  if (data.success) onAuth(data.user);
-                  else setError('Demo login failed.');
-                } catch { setError('Could not reach server.'); }
-                setLoading(false);
-              }}
-              style={{ ...S.linkBtn, fontSize: '0.82rem', color: '#9ca3af' }}
-              disabled={loading}
-            >
-              🎮 Demo login
-            </button>
-          </div>
+          {IS_LOCAL && (
+            <div style={{ textAlign: 'center' }}>
+              <button
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const data = await loginWithPin('7327184414', '0000');
+                    if (data.success) onAuth(data.user);
+                    else setError('Demo login failed.');
+                  } catch { setError('Could not reach server.'); }
+                  setLoading(false);
+                }}
+                style={{ ...S.linkBtn, fontSize: '0.82rem', color: '#9ca3af' }}
+                disabled={loading}
+              >
+                🎮 Demo login
+              </button>
+            </div>
+          )}
         </>)}
 
         {step === 'pin' && (<>
@@ -148,6 +179,9 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           <div style={S.fieldGroup}>
             <label style={S.label}>PIN</label>
             {pinInput(pin, setPin, handlePinLogin)}
+            <p style={{ margin: '0.4rem 0 0', textAlign: 'center', fontSize: '0.78rem', color: '#9ca3af' }}>
+              💡 Default PIN is <strong>0000</strong> if you haven't changed it
+            </p>
           </div>
           {error && <div style={S.errorBox}>{error}</div>}
           <button onClick={handlePinLogin} style={S.primaryBtn} disabled={loading}>
@@ -155,7 +189,7 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           </button>
           <div style={{ textAlign: 'center', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
             <button onClick={() => { setStep('forgot'); setError(''); }} style={S.linkBtn}>Forgot PIN?</button>
-            {backBtn('phone', '← Change number')}
+            {backBtn('phone', '← Change')}
           </div>
         </>)}
 
