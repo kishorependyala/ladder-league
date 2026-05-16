@@ -47,8 +47,15 @@ function TabBar({ tabs, active, onChange }: {
   );
 }
 
+const SESSION_KEY = 'ladder_league_user';
+
 function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem(SESSION_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
   const [impersonating, setImpersonating] = useState<User | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [selectedLeague, setSelectedLeague] = useState<League | null>(null);
@@ -63,8 +70,14 @@ function App() {
       .catch(() => {});
   }, [user]);
 
-  const handleAuth = (u: User) => { setUser(u); setImpersonating(null); setTab('home'); setSelectedLeague(null); };
-  const handleLogout = () => { setUser(null); setImpersonating(null); setTab('home'); setSelectedLeague(null); };
+  const handleAuth = (u: User) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(u));
+    setUser(u); setImpersonating(null); setTab('home'); setSelectedLeague(null);
+  };
+  const handleLogout = () => {
+    localStorage.removeItem(SESSION_KEY);
+    setUser(null); setImpersonating(null); setTab('home'); setSelectedLeague(null);
+  };
   const handleHome = () => { setTab('home'); setSelectedLeague(null); };
 
   const handleOpenLeague = (league: League) => setSelectedLeague(league);
