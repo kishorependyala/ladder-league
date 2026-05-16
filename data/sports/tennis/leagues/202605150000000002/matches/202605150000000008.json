@@ -1,0 +1,34 @@
+{
+  "id": "202605150000000008",
+  "leagueId": "202605150000000002",
+  "sport": "tennis",
+  "submitterId": "202605140000000001",
+  "opponentId": "202605140000000008",
+  "adminSubmittedBy": "202605140000000002",
+  "requiresBothAccept": true,
+  "acceptedSides": [
+    "submitter",
+    "opponent"
+  ],
+  "score": {
+    "sets": [
+      {
+        "me": 6,
+        "opp": 1
+      },
+      {
+        "me": 3,
+        "opp": 6
+      },
+      {
+        "me": 6,
+        "opp": 3
+      }
+    ],
+    "submitterWon": true
+  },
+  "status": "accepted",
+  "submittedAt": "2026-05-15T22:22:00.244228",
+  "resolvedAt": "2026-05-15T22:22:10.545840",
+  "winner": "submitter"
+}

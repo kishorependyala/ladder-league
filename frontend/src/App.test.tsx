@@ -1,9 +1,8 @@
-import React from 'react';
 import { render, screen } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
+test('renders ladder league auth flow', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByText(/ladder league/i)).toBeInTheDocument();
+  expect(screen.getByText(/compete\. track\. dominate\./i)).toBeInTheDocument();
 });

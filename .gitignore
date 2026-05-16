@@ -14,8 +14,9 @@ frontend/node_modules/
 __pycache__/
 *.pyc
 
-# Environment files
+# Environment files (local overrides; .env.example is committed)
 .env
+backend/.env
 
 # VSCode settings
 .vscode/

@@ -1,0 +1,39 @@
+[
+  {
+    "phone": "1234567890",
+    "firstName": "Chandra",
+    "lastName": "Billanuka"
+  },
+  {
+    "phone": "7327184414",
+    "firstName": "kishore",
+    "lastName": "pendyala"
+  },
+  {
+    "phone": "5555555555",
+    "firstName": "ravi",
+    "lastName": "ambavaram"
+  },
+  {
+    "phone": "2222222222",
+    "firstName": "Anjali",
+    "lastName": "Sharma"
+  },
+  {
+    "phone": "7327154415",
+    "firstName": "Jhansi",
+    "lastName": "Vootkuri"
+  },
+  {
+    "phone": "123445",
+    "firstName": "ki1",
+    "lastName": "pendyala"
+  },
+  {
+    "phone": "7327184415",
+    "firstName": "kishore",
+    "lastName": "pendyala",
+    "email": "kishorekpendyala@yahoo.com",
+    "pin": "0000"
+  }
+]

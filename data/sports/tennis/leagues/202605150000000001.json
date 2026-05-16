@@ -1,0 +1,26 @@
+{
+  "id": "202605150000000001",
+  "name": "tennis",
+  "sport": "tennis",
+  "status": "draft",
+  "adminIds": [
+    "202605140000000002"
+  ],
+  "players": [],
+  "startDate": "2026-05-15",
+  "endDate": "2026-05-24",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    }
+  },
+  "stackRanks": {},
+  "finalRanking": [],
+  "createdAt": "2026-05-15T20:03:02.779931"
+}
