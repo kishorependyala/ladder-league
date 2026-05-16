@@ -422,26 +422,66 @@ def api_join_league(league_id: str, data: dict = Body(...)):
         return {"success": False, "message": "You are already a member of this league"}
 
     rules = lg.get("rules", default_rules())
-    allow_late = rules.get("allowLateJoin", False)
     status = lg["status"]
 
-    # Open statuses: draft is always open for self-join
-    # ranking/ranked/active only open if allowLateJoin is enabled
-    if status == "draft":
-        pass  # always open
-    elif status in ("ranking", "ranked", "active") and allow_late:
-        pass  # open by admin rule
-    elif status in ("playoffs", "completed"):
-        return {"success": False, "message": "This league has already concluded"}
-    else:
-        return {"success": False, "message": "This league is not open for new members"}
+    # Backward-compat: old data may have allowLateJoin bool instead of joinPolicy
+    if "joinPolicy" not in rules:
+        rules["joinPolicy"] = "until_ranked" if rules.get("allowLateJoin", False) else "draft_only"
 
-    lg["players"].append({
+    join_policy = rules.get("joinPolicy", "draft_only")
+
+    # Map policy to allowed statuses (completed is never allowed)
+    allowed = {
+        "admin_only":     set(),
+        "draft_only":     {"draft"},
+        "until_ranked":   {"draft", "ranking"},
+        "until_complete": {"draft", "ranking", "ranked", "active", "playoffs"},
+    }.get(join_policy, {"draft"})
+
+    if status == "completed":
+        return {"success": False, "message": "This league has already concluded"}
+    if status not in allowed:
+        policy_labels = {
+            "admin_only":     "Admin-only — contact the league admin to be added",
+            "draft_only":     "Registration is closed — the league has already started",
+            "until_ranked":   "Registration closed — player rankings have been finalized",
+            "until_complete": "This league is not accepting new members at this stage",
+        }
+        return {"success": False, "message": policy_labels.get(join_policy, "This league is not open for new members")}
+
+    # Enforce lateJoinCap (only relevant for non-draft joins)
+    late_join_cap = rules.get("lateJoinCap", None)
+    if status != "draft" and late_join_cap is not None:
+        original_count = len(lg.get("originalPlayers", lg["players"]))
+        current_count = len(lg["players"])
+        late_joiners = current_count - original_count
+        if late_joiners >= late_join_cap:
+            return {"success": False, "message": f"This league has reached its late-join cap ({late_join_cap} player{'s' if late_join_cap != 1 else ''})"}
+
+    new_player = {
         "id": user["id"],
         "phone": user["phone"],
         "firstName": user["firstName"],
         "lastName": user["lastName"],
-    })
+    }
+
+    # Apply newPlayerRankPolicy when joining a live league
+    rank_policy = rules.get("newPlayerRankPolicy", "bottom")
+    if status != "draft" and "finalRanking" in lg and lg["finalRanking"]:
+        ranking = lg["finalRanking"]
+        n = len(ranking)
+        if rank_policy == "bottom":
+            ranking.append(user["id"])
+        elif rank_policy in ("middle", "provisional"):
+            mid = max(0, n // 2)
+            ranking.insert(mid, user["id"])
+        # admin_set: don't add to finalRanking; admin will place manually
+        if rank_policy == "provisional":
+            new_player["provisional"] = True
+            new_player["provisionalUntil"] = n  # becomes official after N matches
+        lg["finalRanking"] = ranking
+
+    lg["players"].append(new_player)
     save_league(lg)
     return {"success": True, "league": lg}
 

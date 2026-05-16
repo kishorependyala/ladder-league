@@ -477,7 +477,18 @@ def default_rules() -> dict:
         "minMatchesPerWeek": 1,
         "penaltyPerMissedWeek": 1,
         "upsetBonus": 1,
-        # allowLateJoin: players can self-join after draft stage
-        # False = only admin can add players once ranking starts
-        "allowLateJoin": False,
+        # joinPolicy controls when players can self-join:
+        #   'draft_only'         - only while league is in draft (default)
+        #   'until_ranked'       - open during draft + ranking phases
+        #   'until_complete'     - open at any time until league completes
+        #   'admin_only'         - no self-join; admin must add manually
+        "joinPolicy": "draft_only",
+        # newPlayerRankPolicy: where a late-joining player lands in standings
+        #   'bottom'       - placed last (safest, default)
+        #   'middle'       - placed at midpoint of current standings
+        #   'provisional'  - placed at midpoint, marked provisional for N matches
+        #   'admin_set'    - left unranked until admin manually assigns a position
+        "newPlayerRankPolicy": "bottom",
+        # lateJoinCap: max number of players who can join after draft (null = unlimited)
+        "lateJoinCap": None,
     }

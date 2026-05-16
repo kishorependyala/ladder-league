@@ -172,7 +172,7 @@ function LeagueDashboard({ user, onOpenLeague }: LeagueDashboardProps) {
                     <option value="">{hasOpen ? `— Select a league (${group.open.length} open) —` : 'No open leagues'}</option>
                     {group.open.map(l => (
                       <option key={l.id} value={l.id}>
-                        {l.name} · {l.status}{l.rules?.allowLateJoin && l.status !== 'draft' ? ' (late join)' : ''}
+                        {l.name} · {l.status}{(l.rules?.joinPolicy === 'until_ranked' || l.rules?.joinPolicy === 'until_complete') && l.status !== 'draft' ? ' (late join)' : ''}
                       </option>
                     ))}
                   </select>

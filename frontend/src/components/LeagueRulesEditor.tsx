@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { SPORT_SCORING, updateLeagueRules, type League, type ScoringFormat } from '../api';
+import { SPORT_SCORING, updateLeagueRules, type League, type LeagueRules, type ScoringFormat } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type Props = {
@@ -9,8 +9,9 @@ type Props = {
 };
 
 type FormatPreset = 'single' | 'best3' | 'best5' | 'custom';
-
 type MatchScheduling = 'adhoc' | 'round-robin';
+type JoinPolicy = LeagueRules['joinPolicy'];
+type RankPolicy = LeagueRules['newPlayerRankPolicy'];
 
 function getPreset(fmt: ScoringFormat | null | undefined): FormatPreset {
   if (!fmt) return 'best3';
@@ -34,6 +35,27 @@ function pillBtnStyle(active: boolean) {
   } as const;
 }
 
+/** Backwards-compat: read joinPolicy from either new field or old allowLateJoin bool */
+function resolveJoinPolicy(rules: LeagueRules | undefined): JoinPolicy {
+  if (!rules) return 'draft_only';
+  if (rules.joinPolicy) return rules.joinPolicy;
+  return (rules as any).allowLateJoin ? 'until_ranked' : 'draft_only';
+}
+
+const JOIN_POLICY_OPTIONS: { value: JoinPolicy; icon: string; label: string; desc: string; color: string }[] = [
+  { value: 'admin_only',     icon: '🔒', label: 'Admin only',           desc: 'No self-join — admin manually adds all players',               color: '#6b7280' },
+  { value: 'draft_only',     icon: '📋', label: 'Draft phase only',     desc: 'Players can join while the league is being set up',            color: '#3b82f6' },
+  { value: 'until_ranked',   icon: '⏳', label: 'Until ranking closes', desc: 'Open during draft & ranking — closes once rankings finalise',  color: '#f59e0b' },
+  { value: 'until_complete', icon: '🟢', label: 'Always open',          desc: 'Players can join any time until the league is fully complete', color: '#22c55e' },
+];
+
+const RANK_POLICY_OPTIONS: { value: RankPolicy; icon: string; label: string; desc: string }[] = [
+  { value: 'bottom',      icon: '⬇️', label: 'Last place',       desc: 'New player starts at the bottom — safest, fairest for existing members' },
+  { value: 'middle',      icon: '↕️', label: 'Mid-table',        desc: 'Inserted in the middle of current standings' },
+  { value: 'provisional', icon: '🔖', label: 'Provisional mid',  desc: 'Placed mid-table but marked provisional — becomes official after a few matches' },
+  { value: 'admin_set',   icon: '✏️', label: 'Admin places',     desc: 'Left unranked until admin manually assigns a position' },
+];
+
 export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Props) {
   const sportDefault = SPORT_SCORING[league.sport] ?? SPORT_SCORING.tennis;
   const saved = league.rules?.scoringFormat ?? null;
@@ -49,7 +71,10 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(league.rules?.minMatchesPerWeek ?? 1);
   const [penaltyPerMissedWeek, setPenaltyPerMissedWeek] = useState(league.rules?.penaltyPerMissedWeek ?? 1);
   const [upsetBonus, setUpsetBonus] = useState(league.rules?.upsetBonus ?? 1);
-  const [allowLateJoin, setAllowLateJoin] = useState(league.rules?.allowLateJoin ?? false);
+  const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(() => resolveJoinPolicy(league.rules));
+  const [rankPolicy, setRankPolicy] = useState<RankPolicy>(league.rules?.newPlayerRankPolicy ?? 'bottom');
+  const [useLateJoinCap, setUseLateJoinCap] = useState(league.rules?.lateJoinCap != null);
+  const [lateJoinCap, setLateJoinCap] = useState(league.rules?.lateJoinCap ?? 5);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -88,7 +113,9 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         minMatchesPerWeek,
         penaltyPerMissedWeek,
         upsetBonus,
-        allowLateJoin,
+        joinPolicy,
+        newPlayerRankPolicy: rankPolicy,
+        lateJoinCap: useLateJoinCap ? lateJoinCap : null,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -113,7 +140,9 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         minMatchesPerWeek: 1,
         penaltyPerMissedWeek: 1,
         upsetBonus: 1,
-        allowLateJoin: false,
+        joinPolicy: 'draft_only',
+        newPlayerRankPolicy: 'bottom',
+        lateJoinCap: null,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -127,6 +156,9 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         setMinMatchesPerWeek(1);
         setPenaltyPerMissedWeek(1);
         setUpsetBonus(1);
+        setJoinPolicy('draft_only');
+        setRankPolicy('bottom');
+        setUseLateJoinCap(false);
         setSaved2(true);
         setTimeout(() => setSaved2(false), 2500);
       } else {
@@ -288,25 +320,101 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
       </Section>
 
       {/* ── Membership ── */}
-      <Section title="🚪 Membership">
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.75rem', background: allowLateJoin ? '#f0fdf4' : '#f9fafb', borderRadius: '0.75rem', border: `1px solid ${allowLateJoin ? '#bbf7d0' : '#e5e7eb'}`, transition: 'all 0.15s' }}>
-          <div
-            onClick={() => setAllowLateJoin(v => !v)}
-            style={{ width: 40, height: 22, borderRadius: 99, background: allowLateJoin ? '#22c55e' : '#d1d5db', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
-          >
-            <div style={{ position: 'absolute', top: 3, left: allowLateJoin ? 21 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
+      <Section title="🚪 Membership & late join">
+        {/* Join policy */}
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>When can players join?</label>
+          <div style={{ display: 'grid', gap: '0.5rem' }}>
+            {JOIN_POLICY_OPTIONS.map(opt => (
+              <label
+                key={opt.value}
+                onClick={() => setJoinPolicy(opt.value)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                  padding: '0.75rem 0.9rem',
+                  borderRadius: '0.75rem',
+                  border: `2px solid ${joinPolicy === opt.value ? opt.color : '#e5e7eb'}`,
+                  background: joinPolicy === opt.value ? '#f9fafb' : '#fff',
+                  cursor: 'pointer',
+                  transition: 'border-color 0.15s',
+                }}
+              >
+                <div style={{
+                  marginTop: 2,
+                  width: 18, height: 18, borderRadius: '50%',
+                  border: `2px solid ${joinPolicy === opt.value ? opt.color : '#d1d5db'}`,
+                  background: joinPolicy === opt.value ? opt.color : '#fff',
+                  flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {joinPolicy === opt.value && <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />}
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#111827' }}>
+                    {opt.icon} {opt.label}
+                  </div>
+                  <div style={{ ...mutedText, fontSize: '0.78rem', marginTop: '0.15rem' }}>{opt.desc}</div>
+                </div>
+              </label>
+            ))}
           </div>
-          <div>
-            <div style={{ fontWeight: 600, color: allowLateJoin ? '#15803d' : '#374151', fontSize: '0.9rem' }}>
-              Allow players to join after ranking
-            </div>
-            <div style={{ ...mutedText, fontSize: '0.78rem', marginTop: '0.15rem' }}>
-              {allowLateJoin
-                ? 'Players can self-join while the league is in ranking, ranked, or active status'
-                : 'Only admin can add players once ranking has started'}
+        </div>
+
+        {/* Rank policy — only relevant when late join is possible */}
+        {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+          <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.5rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Default rank for late joiners</label>
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              {RANK_POLICY_OPTIONS.map(opt => (
+                <label
+                  key={opt.value}
+                  onClick={() => setRankPolicy(opt.value)}
+                  style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                    padding: '0.6rem 0.9rem',
+                    borderRadius: '0.65rem',
+                    border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#e5e7eb'}`,
+                    background: rankPolicy === opt.value ? '#fffbeb' : '#fff',
+                    cursor: 'pointer',
+                    transition: 'border-color 0.15s',
+                  }}
+                >
+                  <div style={{
+                    marginTop: 2,
+                    width: 16, height: 16, borderRadius: '50%',
+                    border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#d1d5db'}`,
+                    background: rankPolicy === opt.value ? '#f59e0b' : '#fff',
+                    flexShrink: 0,
+                  }}>
+                    {rankPolicy === opt.value && <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff', margin: '3px auto' }} />}
+                  </div>
+                  <div>
+                    <span style={{ fontWeight: 600, fontSize: '0.86rem' }}>{opt.icon} {opt.label}</span>
+                    <span style={{ ...mutedText, fontSize: '0.77rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
-        </label>
+        )}
+
+        {/* Late join cap */}
+        {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+          <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none', marginTop: '0.25rem' }}>
+            <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
+            <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={lateJoinCap}
+              disabled={!useLateJoinCap}
+              onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
+              style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }}
+            />
+            <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
+          </label>
+        )}
       </Section>
 
       <div style={{ background: '#f0fdf4', borderRadius: '0.75rem', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#166534', border: '1px solid #bbf7d0' }}>
@@ -316,7 +424,9 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         · {matchFormat === 'adhoc' ? ' ad-hoc scheduling' : ' round-robin scheduling'}
         · {minMatchesPerWeek}/week minimum
         · upset bonus {upsetBonus}
-        · {allowLateJoin ? 'late join ON' : 'late join OFF'}
+        · join: {JOIN_POLICY_OPTIONS.find(o => o.value === joinPolicy)?.label ?? joinPolicy}
+        {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && ` · new rank: ${RANK_POLICY_OPTIONS.find(o => o.value === rankPolicy)?.label ?? rankPolicy}`}
+        {useLateJoinCap && ` · max ${lateJoinCap} late joiners`}
       </div>
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>

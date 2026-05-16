@@ -518,6 +518,10 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [matchFormat, setMatchFormat] = useState<'adhoc' | 'round-robin'>('adhoc');
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(1);
   const [upsetBonus, setUpsetBonus] = useState(1);
+  const [joinPolicy, setJoinPolicy] = useState<'admin_only' | 'draft_only' | 'until_ranked' | 'until_complete'>('draft_only');
+  const [rankPolicy, setRankPolicy] = useState<'bottom' | 'middle' | 'provisional' | 'admin_set'>('bottom');
+  const [useLateJoinCap, setUseLateJoinCap] = useState(false);
+  const [lateJoinCap, setLateJoinCap] = useState(5);
   const [busy, setBusy] = useState(false);
 
   const pillStyle = (active: boolean) => ({
@@ -532,6 +536,19 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
     cursor: 'pointer',
   } as const);
 
+  const JP_OPTIONS = [
+    { value: 'admin_only' as const,     icon: '🔒', label: 'Admin only',           desc: 'Admin manually adds all players' },
+    { value: 'draft_only' as const,     icon: '📋', label: 'Draft phase only',     desc: 'Players can join during setup only (default)' },
+    { value: 'until_ranked' as const,   icon: '⏳', label: 'Until ranking closes', desc: 'Open during draft & ranking phases' },
+    { value: 'until_complete' as const, icon: '🟢', label: 'Always open',          desc: 'Open until the league is fully complete' },
+  ];
+  const RP_OPTIONS = [
+    { value: 'bottom' as const,      icon: '⬇️', label: 'Last place',      desc: 'Placed at the bottom (default)' },
+    { value: 'middle' as const,      icon: '↕️', label: 'Mid-table',       desc: 'Inserted in the middle of standings' },
+    { value: 'provisional' as const, icon: '🔖', label: 'Provisional mid', desc: 'Mid-table, marked provisional until enough matches played' },
+    { value: 'admin_set' as const,   icon: '✏️', label: 'Admin places',    desc: 'Left unranked until admin sets a position' },
+  ];
+
   const handleCreate = async () => {
     if (!name || !sport || !start || !end) { onFail('All fields are required.'); return; }
     setBusy(true);
@@ -540,6 +557,9 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
         matchFormat,
         minMatchesPerWeek,
         upsetBonus,
+        joinPolicy,
+        newPlayerRankPolicy: rankPolicy,
+        lateJoinCap: useLateJoinCap ? lateJoinCap : null,
       };
       const res = await createLeague(sessionUser.phone, name, sport, start, end, rules);
       onCreated(res.league);
@@ -551,6 +571,9 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       setMatchFormat('adhoc');
       setMinMatchesPerWeek(1);
       setUpsetBonus(1);
+      setJoinPolicy('draft_only');
+      setRankPolicy('bottom');
+      setUseLateJoinCap(false);
     } catch (e) { onFail(e instanceof Error ? e.message : 'Could not create league.'); }
     setBusy(false);
   };
@@ -584,7 +607,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
         </button>
 
         {showAdvanced && (
-          <div style={{ display: 'grid', gap: '0.9rem' }}>
+          <div style={{ display: 'grid', gap: '1.1rem' }}>
             <div style={{ display: 'grid', gap: '0.35rem' }}>
               <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -609,7 +632,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
             </div>
 
             <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus</label>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus points</label>
               <input
                 type="number"
                 min={0}
@@ -619,6 +642,64 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
                 style={{ ...S.inp, width: 96 }}
               />
             </div>
+
+            {/* Join policy */}
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🚪 When can players join?</label>
+              <div style={{ display: 'grid', gap: '0.4rem' }}>
+                {JP_OPTIONS.map(opt => (
+                  <label key={opt.value} onClick={() => setJoinPolicy(opt.value)}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.6rem 0.75rem', borderRadius: '0.6rem',
+                      border: `2px solid ${joinPolicy === opt.value ? '#f59e0b' : '#e5e7eb'}`,
+                      background: joinPolicy === opt.value ? '#fffbeb' : '#fff', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                  >
+                    <div style={{ marginTop: 2, width: 14, height: 14, borderRadius: '50%',
+                      border: `2px solid ${joinPolicy === opt.value ? '#f59e0b' : '#d1d5db'}`,
+                      background: joinPolicy === opt.value ? '#f59e0b' : '#fff', flexShrink: 0 }} />
+                    <div>
+                      <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{opt.icon} {opt.label}</span>
+                      <span style={{ ...mutedText, fontSize: '0.76rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Rank policy — only when late join is possible */}
+            {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+              <div style={{ display: 'grid', gap: '0.35rem' }}>
+                <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🏅 Default rank for late joiners</label>
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {RP_OPTIONS.map(opt => (
+                    <label key={opt.value} onClick={() => setRankPolicy(opt.value)}
+                      style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.55rem 0.75rem', borderRadius: '0.6rem',
+                        border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#e5e7eb'}`,
+                        background: rankPolicy === opt.value ? '#fffbeb' : '#fff', cursor: 'pointer', transition: 'border-color 0.15s' }}
+                    >
+                      <div style={{ marginTop: 2, width: 14, height: 14, borderRadius: '50%',
+                        border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#d1d5db'}`,
+                        background: rankPolicy === opt.value ? '#f59e0b' : '#fff', flexShrink: 0 }} />
+                      <div>
+                        <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{opt.icon} {opt.label}</span>
+                        <span style={{ ...mutedText, fontSize: '0.76rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Late-join cap */}
+            {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+              <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
+                <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
+                <input type="number" min={1} max={50} value={lateJoinCap} disabled={!useLateJoinCap}
+                  onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
+                  style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }} />
+                <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
+              </label>
+            )}
           </div>
         )}
       </div>

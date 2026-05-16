@@ -65,7 +65,12 @@ export interface LeagueRules {
   minMatchesPerWeek: number;
   penaltyPerMissedWeek: number;
   upsetBonus: number;
-  allowLateJoin: boolean;
+  /** Controls when players can self-join the league */
+  joinPolicy: 'draft_only' | 'until_ranked' | 'until_complete' | 'admin_only';
+  /** Where a late-joining player lands in the standings */
+  newPlayerRankPolicy: 'bottom' | 'middle' | 'provisional' | 'admin_set';
+  /** Max players who can join after draft phase (null = unlimited) */
+  lateJoinCap: number | null;
 }
 
 export interface ScoringFormat {
@@ -283,9 +288,16 @@ export function joinLeague(id: string, phone: string): Promise<{ success: boolea
 /** Returns true if a league is open for self-join by a non-member. */
 export function isLeagueJoinable(league: League): boolean {
   const { status, rules } = league;
-  if (status === 'draft') return true;
-  if (['ranking', 'ranked', 'active'].includes(status) && rules?.allowLateJoin) return true;
-  return false;
+  if (status === 'completed') return false;
+  // backward-compat: old data may have allowLateJoin bool
+  const policy = rules?.joinPolicy ?? ((rules as any)?.allowLateJoin ? 'until_ranked' : 'draft_only');
+  const allowedByPolicy: Record<string, string[]> = {
+    admin_only:     [],
+    draft_only:     ['draft'],
+    until_ranked:   ['draft', 'ranking'],
+    until_complete: ['draft', 'ranking', 'ranked', 'active', 'playoffs'],
+  };
+  return (allowedByPolicy[policy] ?? ['draft']).includes(status);
 }
 
 export function addPlayer(id: string, phone: string, targetPhone: string): Promise<{ success: boolean; league: League }> {
