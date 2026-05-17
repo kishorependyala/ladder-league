@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { finalizeRanking, getDisplayName, getMyRoles, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
+import { finalizeRanking, getDisplayName, getMyRoles, isLeagueMember, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 
 type RankingPhaseProps = {
@@ -83,7 +83,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   };
 
   const isAdmin    = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
-  const isPlayer   = league.players.some(p => p.id === user.id);
+  const isPlayer   = isLeagueMember(league, user);
   const submissions = Object.keys(league.stackRanks || {}).length;
   const hasSubmitted = Boolean(league.stackRanks?.[user.id]);
 
