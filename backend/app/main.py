@@ -111,6 +111,13 @@ def save_user(user: dict):
     with open(os.path.join(USERS_DIR, f'{uid}.json'), 'w') as f:
         json.dump(user, f, indent=2)
 
+def find_league_player(league: dict, user: dict) -> Optional[dict]:
+    """Find a player in a league by matching id first, then phone (handles id mismatches)."""
+    for p in league.get("players", []):
+        if p["id"] == user["id"] or p.get("phone") == user.get("phone"):
+            return p
+    return None
+
 def _migrate_legacy_users():
     """One-time migration: move users.json entries into per-file storage."""
     legacy = os.path.join(DATA_DIR, 'users.json')
@@ -535,10 +542,12 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
         return {"success": False, "message": "League not found"}
     if lg["status"] not in ("draft", "ranking", "ranked"):
         return {"success": False, "message": "League is not in a ranking phase"}
-    if not any(p["id"] == user["id"] for p in lg["players"]):
+    league_player = find_league_player(lg, user)
+    if not league_player:
         return {"success": False, "message": "You are not in this league"}
+    player_id = league_player["id"]
 
-    lg.setdefault("stackRanks", {})[user["id"]] = ranked_ids
+    lg.setdefault("stackRanks", {})[player_id] = ranked_ids
 
     # Always recompute finalRanking from current votes so it stays in sync with averages
     all_submitted = all(p["id"] in lg["stackRanks"] for p in lg["players"])

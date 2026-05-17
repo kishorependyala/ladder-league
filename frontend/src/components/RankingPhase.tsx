@@ -30,17 +30,23 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     [league.players],
   );
 
+  // The player's actual ID within this league (may differ from user.id due to legacy data)
+  const leaguePlayerId = useMemo(
+    () => league.players.find(p => p.id === user.id || p.phone === user.phone)?.id ?? user.id,
+    [league.players, user.id, user.phone],
+  );
+
   useEffect(() => {
     // When ranked (finalized), always show the official finalRanking so the admin's
     // manual override is reflected. During ranking/draft, show the user's personal vote.
     const preferred = league.status === 'ranked'
       ? league.finalRanking
-      : (league.stackRanks[user.id] || league.finalRanking);
+      : (league.stackRanks[leaguePlayerId] || league.finalRanking);
     const fallback = league.players.map(p => p.id);
     const combined = (preferred.length ? preferred : fallback).filter(id => playersById[id]);
     const missing = fallback.filter(id => !combined.includes(id));
     setOrder([...combined, ...missing]);
-  }, [league.finalRanking, league.players, league.stackRanks, league.status, playersById, user.id]);
+  }, [league.finalRanking, league.players, league.stackRanks, league.status, playersById, leaguePlayerId]);
 
   const reorder = (from: number, to: number) => {
     if (from === to || to < 0 || to >= order.length) return;
@@ -86,7 +92,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   const isPlayer   = isLeagueMember(league, user);
   const canJoin    = !isPlayer && isLeagueJoinable(league);
   const submissions = Object.keys(league.stackRanks || {}).length;
-  const hasSubmitted = Boolean(league.stackRanks?.[user.id]);
+  const hasSubmitted = Boolean(league.stackRanks?.[leaguePlayerId]);
 
   const handleJoin = async () => {
     setLoading(true); setError(''); setMessage('');
@@ -153,7 +159,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
             {league.players.map((p, i) => {
               const done = !!league.stackRanks?.[p.id];
-              const isMe = p.id === user.id;
+              const isMe = p.id === leaguePlayerId;
               return (
                 <div key={p.id} title={done ? `${getDisplayName(p)} ✓` : `${getDisplayName(p)} — pending`}
                   style={{ width: 32, height: 32, borderRadius: 999, background: done ? '#22c55e' : '#fde68a', border: `2px solid ${isMe ? '#f59e0b' : done ? '#16a34a' : '#fed7aa'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, color: done ? '#fff' : '#92400e' }}>
@@ -194,7 +200,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
 
           <div ref={listRef} style={{ display: 'grid', gap: '0.5rem' }}>
             {order.map((playerId, index) => {
-              const isMe = playerId === user.id;
+              const isMe = playerId === leaguePlayerId;
               const isDragging = dragIndex === index;
               const isOver = dragOverIndex === index && dragIndex !== index;
               const isSelected = selected === index;
@@ -334,7 +340,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
       )}
 
       {Object.keys(league.stackRanks || {}).length > 0 && (
-        <RankingOverview league={league} playersById={playersById} userId={user.id} />
+        <RankingOverview league={league} playersById={playersById} userId={leaguePlayerId} />
       )}
     </div>
   );
