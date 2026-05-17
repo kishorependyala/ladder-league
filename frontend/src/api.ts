@@ -500,6 +500,30 @@ export function dataDownloadUrl(phone: string): string {
   return `${API_BASE}/api/admin/data/download?phone=${encodeURIComponent(phone)}`;
 }
 
+export interface DataIssue {
+  type: string;
+  severity: 'warning' | 'error';
+  description: string;
+  fix: string | null;
+  leagueId?: string;
+  leagueName?: string;
+  sport?: string;
+  [key: string]: unknown;
+}
+
+export function auditData(phone: string): Promise<{ success: boolean; issues: DataIssue[]; total: number; message?: string }> {
+  return get(`/api/admin/maintenance/audit?phone=${encodeURIComponent(phone)}`);
+}
+
+export function migrateLeagueIds(phone: string): Promise<{ success: boolean; migrated: { old: string; new: string; sport: string }[]; skipped: string[]; message?: string }> {
+  return post('/api/admin/maintenance/migrate-league-ids', { phone });
+}
+
+export function fixPlayerIds(phone: string): Promise<{ success: boolean; fixed: { leagueId: string; leagueName: string; oldId: string; newId: string }[]; message?: string }> {
+  return post('/api/admin/maintenance/fix-player-ids', { phone });
+}
+
+
 export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
   return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);
 }

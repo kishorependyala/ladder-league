@@ -1183,8 +1183,165 @@ def api_data_download(phone: str = Query(...)):
     )
 
 
+@app.get("/api/admin/maintenance/audit")
+def api_maintenance_audit(phone: str = Query(...)):
+    """Scan all data for known issues and return a report."""
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    from app.leagues import SPORTS, list_leagues, _sports_dir
+
+    issues = []
+
+    # ── 1. Leagues with legacy (non-sport-prefixed) IDs ─────────────
+    for sport in SPORTS:
+        leagues_dir = os.path.join(_sports_dir(), sport, "leagues")
+        if not os.path.isdir(leagues_dir):
+            continue
+        for fname in os.listdir(leagues_dir):
+            if not fname.endswith(".json"):
+                continue
+            lid = fname[:-5]
+            if not lid.startswith(f"{sport}_"):
+                issues.append({
+                    "type": "legacy_league_id",
+                    "severity": "warning",
+                    "sport": sport,
+                    "leagueId": lid,
+                    "description": f"League '{lid}' ({sport}) uses a legacy ID — should be '{sport}_{lid}'",
+                    "fix": "migrate_league_ids",
+                })
+
+    # ── 2. Players whose ID in the league doesn't match the users dir ─
+    all_users = load_users()
+    phone_to_user = {u["phone"]: u for u in all_users}
+    for lg in list_leagues():
+        for p in lg.get("players", []):
+            matching_user = phone_to_user.get(p.get("phone", ""))
+            if matching_user and matching_user["id"] != p["id"]:
+                issues.append({
+                    "type": "player_id_mismatch",
+                    "severity": "warning",
+                    "leagueId": lg["id"],
+                    "leagueName": lg.get("name", lg["id"]),
+                    "playerId": p["id"],
+                    "userRecordId": matching_user["id"],
+                    "phone": p.get("phone"),
+                    "name": f"{p.get('firstName','')} {p.get('lastName','')}".strip(),
+                    "description": f"Player '{p.get('firstName','')} {p.get('lastName','')}' in '{lg.get('name',lg['id'])}' has id={p['id']} but user record has id={matching_user['id']}",
+                    "fix": "fix_player_ids",
+                })
+
+    # ── 3. adminIds that don't resolve to a known user ───────────────
+    for lg in list_leagues():
+        for admin_id in lg.get("adminIds", []):
+            user = get_user_by_id(admin_id)
+            if not user:
+                issues.append({
+                    "type": "unresolvable_admin",
+                    "severity": "error",
+                    "leagueId": lg["id"],
+                    "leagueName": lg.get("name", lg["id"]),
+                    "adminId": admin_id,
+                    "description": f"League '{lg.get('name',lg['id'])}' has adminId={admin_id} which has no matching user record",
+                    "fix": None,
+                })
+
+    return {"success": True, "issues": issues, "total": len(issues)}
+
+
+@app.post("/api/admin/maintenance/migrate-league-ids")
+def api_migrate_league_ids(data: dict = Body(...)):
+    """Rename legacy league IDs to sport-prefixed format."""
+    phone = data.get("phone")
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    from app.leagues import SPORTS, _sports_dir
+    import shutil
+
+    migrated = []
+    skipped = []
+
+    for sport in SPORTS:
+        leagues_dir = os.path.join(_sports_dir(), sport, "leagues")
+        if not os.path.isdir(leagues_dir):
+            continue
+        for fname in list(os.listdir(leagues_dir)):
+            if not fname.endswith(".json"):
+                continue
+            old_id = fname[:-5]
+            if old_id.startswith(f"{sport}_"):
+                skipped.append(old_id)
+                continue
+            new_id = f"{sport}_{old_id}"
+            old_path = os.path.join(leagues_dir, fname)
+            new_path = os.path.join(leagues_dir, f"{new_id}.json")
+            if os.path.exists(new_path):
+                skipped.append(old_id)
+                continue
+
+            with open(old_path) as f:
+                lg = json.load(f)
+            lg["id"] = new_id
+            with open(new_path, "w") as f:
+                json.dump(lg, f, indent=2)
+            os.remove(old_path)
+
+            # Rename matches subfolder and update leagueId inside each match
+            old_matches = os.path.join(leagues_dir, old_id)
+            new_matches = os.path.join(leagues_dir, new_id)
+            if os.path.isdir(old_matches) and not os.path.exists(new_matches):
+                shutil.move(old_matches, new_matches)
+                matches_subdir = os.path.join(new_matches, "matches")
+                scan_dir = matches_subdir if os.path.isdir(matches_subdir) else new_matches
+                for mfname in os.listdir(scan_dir):
+                    if not mfname.endswith(".json"):
+                        continue
+                    mpath = os.path.join(scan_dir, mfname)
+                    with open(mpath) as mf:
+                        match = json.load(mf)
+                    if match.get("leagueId") == old_id:
+                        match["leagueId"] = new_id
+                        with open(mpath, "w") as mf:
+                            json.dump(match, mf, indent=2)
+
+            migrated.append({"old": old_id, "new": new_id, "sport": sport})
+
+    return {"success": True, "migrated": migrated, "skipped": skipped}
+
+
+@app.post("/api/admin/maintenance/fix-player-ids")
+def api_fix_player_ids(data: dict = Body(...)):
+    """Fix player ID mismatches — align player IDs in leagues with user records."""
+    phone = data.get("phone")
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    from app.leagues import list_leagues, save_league
+
+    all_users = load_users()
+    phone_to_user = {u["phone"]: u for u in all_users}
+    fixed = []
+
+    for lg in list_leagues():
+        changed = False
+        for p in lg.get("players", []):
+            matching_user = phone_to_user.get(p.get("phone", ""))
+            if matching_user and matching_user["id"] != p["id"]:
+                old_id, new_id = p["id"], matching_user["id"]
+                p["id"] = new_id
+                if "stackRanks" in lg and old_id in lg["stackRanks"]:
+                    lg["stackRanks"][new_id] = lg["stackRanks"].pop(old_id)
+                lg["finalRanking"] = [new_id if x == old_id else x for x in lg.get("finalRanking", [])]
+                lg["adminIds"] = [new_id if x == old_id else x for x in lg.get("adminIds", [])]
+                fixed.append({"leagueId": lg["id"], "leagueName": lg.get("name"), "oldId": old_id, "newId": new_id})
+                changed = True
+        if changed:
+            save_league(lg)
+
+    return {"success": True, "fixed": fixed}
+
 
 def api_admin_config(phone: str = Query(...)):
+
     if not is_super_admin(phone):
         return {"success": False, "message": "Not authorized"}
     from app.leagues import SPORTS, SPORT_LABELS, SPORT_SCORING, default_rules

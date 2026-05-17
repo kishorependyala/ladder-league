@@ -4,6 +4,7 @@ import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 import DataBrowser from './DataBrowser';
 import AppConfigView from './AppConfigView';
+import MaintenanceTab from './MaintenanceTab';
 
 type SuperAdminPanelProps = {
   sessionUser: User;
@@ -13,7 +14,7 @@ type SuperAdminPanelProps = {
   onUsersChanged?: () => void;
 };
 
-type SubTab = 'leagues' | 'users' | 'create' | 'data' | 'config';
+type SubTab = 'leagues' | 'users' | 'create' | 'data' | 'config' | 'maintenance';
 
 const DELETE_PIN = '1234567';
 
@@ -72,6 +73,7 @@ function SuperAdminPanel({ sessionUser, impersonating, onImpersonate, onReturn, 
           ['create', '➕', 'Create'],
           ['data', '📁', 'Data Files'],
           ['config', '⚙️', 'App Config'],
+          ['maintenance', '🔧', 'Maintenance'],
         ] as [SubTab, string, string][]).map(([id, emoji, label]) => (
           <button key={id} onClick={() => setSubTab(id)} style={{ padding: '0.75rem 0.9rem', background: 'none', border: 'none', borderBottom: subTab === id ? '3px solid #f59e0b' : '3px solid transparent', color: subTab === id ? '#92400e' : '#6b7280', fontWeight: subTab === id ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer', marginBottom: '-2px', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
             {emoji} {label}
@@ -108,6 +110,7 @@ function SuperAdminPanel({ sessionUser, impersonating, onImpersonate, onReturn, 
       )}
       {subTab === 'data' && <DataBrowser phone={sessionUser.phone} />}
       {subTab === 'config' && <AppConfigView phone={sessionUser.phone} />}
+      {subTab === 'maintenance' && <MaintenanceTab phone={sessionUser.phone} />}
     </div>
   );
 }
