@@ -37,11 +37,9 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   );
 
   useEffect(() => {
-    // When ranked (finalized), always show the official finalRanking so the admin's
-    // manual override is reflected. During ranking/draft, show the user's personal vote.
-    const preferred = league.status === 'ranked'
-      ? league.finalRanking
-      : (league.stackRanks[leaguePlayerId] || league.finalRanking);
+    // Always show the user's own saved vote first; fall back to finalRanking.
+    // (The finalRanking overview is shown separately below, not in the personal vote UI.)
+    const preferred = league.stackRanks[leaguePlayerId] || league.finalRanking;
     const fallback = league.players.map(p => p.id);
     const combined = (preferred.length ? preferred : fallback).filter(id => playersById[id]);
     const missing = fallback.filter(id => !combined.includes(id));
