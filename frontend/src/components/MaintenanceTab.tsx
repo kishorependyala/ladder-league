@@ -95,8 +95,8 @@ export default function MaintenanceTab({ phone }: Props) {
           </div>
 
           {/* Fix result */}
-          {results[fixKey] && (
-            <FixResult fixKey={fixKey} result={results[fixKey]} />
+          {results[fixKey] != null && (
+            <FixResult fixKey={fixKey} result={results[fixKey] as Record<string, unknown>} />
           )}
 
           {/* Issue list */}
