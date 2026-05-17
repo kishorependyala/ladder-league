@@ -133,7 +133,7 @@ def _next_id(directory: str, prefix: str = "") -> str:
 def next_league_id(sport: str) -> str:
     leagues_dir = os.path.join(_sports_dir(), sport, "leagues")
     os.makedirs(leagues_dir, exist_ok=True)
-    return _next_id(leagues_dir)
+    return _next_id(leagues_dir, prefix=f"{sport}_")
 
 
 def next_match_id(sport: str, league_id: str) -> str:
