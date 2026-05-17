@@ -540,10 +540,10 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
 
     lg.setdefault("stackRanks", {})[user["id"]] = ranked_ids
 
-    # Auto-finalize when all players have submitted (only during active ranking phase)
+    # Always recompute finalRanking from current votes so it stays in sync with averages
     all_submitted = all(p["id"] in lg["stackRanks"] for p in lg["players"])
+    lg["finalRanking"] = compute_final_ranking(lg)
     if all_submitted and lg["status"] == "ranking":
-        lg["finalRanking"] = compute_final_ranking(lg)
         lg["status"] = "ranked"
 
     save_league(lg)

@@ -360,7 +360,7 @@ def generate_playoffs(league_doc: dict, standings: list[dict]) -> dict:
 
 def compute_final_ranking(league: dict) -> list:
     """
-    Borda count: each player's submitted ranking contributes positional scores.
+    Average position: each player's submitted ranking contributes positional scores.
     Lower average position = higher final rank.
     Players not ranked by a voter are placed last.
     """

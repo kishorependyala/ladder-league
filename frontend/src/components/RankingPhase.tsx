@@ -31,12 +31,16 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   );
 
   useEffect(() => {
-    const preferred = league.stackRanks[user.id] || league.finalRanking;
+    // When ranked (finalized), always show the official finalRanking so the admin's
+    // manual override is reflected. During ranking/draft, show the user's personal vote.
+    const preferred = league.status === 'ranked'
+      ? league.finalRanking
+      : (league.stackRanks[user.id] || league.finalRanking);
     const fallback = league.players.map(p => p.id);
     const combined = (preferred.length ? preferred : fallback).filter(id => playersById[id]);
     const missing = fallback.filter(id => !combined.includes(id));
     setOrder([...combined, ...missing]);
-  }, [league.finalRanking, league.players, league.stackRanks, playersById, user.id]);
+  }, [league.finalRanking, league.players, league.stackRanks, league.status, playersById, user.id]);
 
   const reorder = (from: number, to: number) => {
     if (from === to || to < 0 || to >= order.length) return;
@@ -86,6 +90,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     setLoading(true); setError(''); setMessage('');
     try {
       const res = await submitRanking(league.id, user.phone, order);
+      if (!res.success) { setError(res.message || 'Could not save ranking.'); setLoading(false); return; }
       onLeagueChange(res.league);
       if (res.allDone) setMessage('🎉 Everyone has submitted — the admin can now finalize.');
       else setMessage('✓ Ranking saved!');
@@ -97,6 +102,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     setLoading(true); setError(''); setMessage('');
     try {
       const res = await finalizeRanking(league.id, user.phone, order);
+      if (!res.success) { setError(res.message || 'Could not finalize ranking.'); setLoading(false); return; }
       onLeagueChange(res.league);
       setMessage('Final ranking saved.');
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not finalize.'); }
@@ -373,7 +379,7 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
           <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#9ca3af' }}>· votes are anonymous</span>
         </h3>
         <p style={{ ...mutedText, fontSize: '0.82rem', marginTop: '0.25rem' }}>
-          Each column is one voter's ranking. Cells show the position they gave each player (1 = best). Final rank is the Borda count result.
+          Each column is one voter's ranking. Cells show the position they gave each player (1 = best). Final rank is the average position result.
         </p>
       </div>
 
