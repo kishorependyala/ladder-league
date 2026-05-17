@@ -83,6 +83,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   };
 
   const isAdmin    = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
+  const isPlayer   = league.players.some(p => p.id === user.id);
   const submissions = Object.keys(league.stackRanks || {}).length;
   const hasSubmitted = Boolean(league.stackRanks?.[user.id]);
 
@@ -151,12 +152,13 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           </div>
         </div>
 
-        {!hasSubmitted && (
+        {isPlayer && !hasSubmitted && (
           <div style={S.infoBox}>
             Rank from <strong>strongest → weakest</strong>. Tap a row to select it, then use the arrows — or drag on desktop. Rankings are private until finalized.
           </div>
         )}
-        {hasSubmitted && <div style={S.successBox}>✓ Submitted — you can still update before the admin finalizes.</div>}
+        {isPlayer && hasSubmitted && <div style={S.successBox}>✓ Submitted — you can still update before the admin finalizes.</div>}
+        {!isPlayer && <div style={S.infoBox}>You are not a player in this league — admin view only.</div>}
         {error && <div style={S.errorBox}>{error}</div>}
         {message && <div style={S.successBox}>{message}</div>}
       </div>
@@ -288,9 +290,11 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           </div>
 
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', paddingTop: '0.25rem' }}>
-            <button style={S.primaryBtn} disabled={loading} onClick={handleSubmit}>
-              {loading ? 'Saving…' : hasSubmitted ? '✓ Update ranking' : '✓ Submit ranking'}
-            </button>
+            {isPlayer && (
+              <button style={S.primaryBtn} disabled={loading} onClick={handleSubmit}>
+                {loading ? 'Saving…' : hasSubmitted ? '✓ Update ranking' : '✓ Submit ranking'}
+              </button>
+            )}
             {isAdmin && league.status !== 'draft' && (
               <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Finalize (admin)</button>
             )}
