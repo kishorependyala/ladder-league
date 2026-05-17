@@ -496,6 +496,10 @@ export function dataReadFile(phone: string, path: string): Promise<{ success: bo
   return get(`/api/admin/data/file?phone=${encodeURIComponent(phone)}&path=${encodeURIComponent(path)}`);
 }
 
+export function dataDownloadUrl(phone: string): string {
+  return `${API_BASE}/api/admin/data/download?phone=${encodeURIComponent(phone)}`;
+}
+
 export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
   return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);
 }

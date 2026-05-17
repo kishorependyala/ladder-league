@@ -1,10 +1,13 @@
 from fastapi import FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from typing import List, Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import io
 import json
 import os
+import zipfile
 from datetime import datetime
 
 # Load .env from the backend directory (ignored in prod; Azure uses App Service env vars)
@@ -1161,7 +1164,26 @@ def api_data_file(phone: str = Query(...), path: str = Query(...)):
         return {"success": False, "message": str(e)}
 
 
-@app.get("/api/admin/config")
+@app.get("/api/admin/data/download")
+def api_data_download(phone: str = Query(...)):
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(DATA_DIR):
+            for fname in files:
+                full = os.path.join(root, fname)
+                arcname = os.path.relpath(full, os.path.dirname(DATA_DIR))
+                zf.write(full, arcname)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=ladder-league-data.zip"},
+    )
+
+
+
 def api_admin_config(phone: str = Query(...)):
     if not is_super_admin(phone):
         return {"success": False, "message": "Not authorized"}
