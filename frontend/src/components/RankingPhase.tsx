@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { finalizeRanking, getDisplayName, getMyRoles, isLeagueMember, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
+import { finalizeRanking, getDisplayName, getMyRoles, isLeagueJoinable, isLeagueMember, joinLeague, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 
 type RankingPhaseProps = {
@@ -84,8 +84,20 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
 
   const isAdmin    = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
   const isPlayer   = isLeagueMember(league, user);
+  const canJoin    = !isPlayer && isLeagueJoinable(league);
   const submissions = Object.keys(league.stackRanks || {}).length;
   const hasSubmitted = Boolean(league.stackRanks?.[user.id]);
+
+  const handleJoin = async () => {
+    setLoading(true); setError(''); setMessage('');
+    try {
+      const res = await joinLeague(league.id, user.phone);
+      if (!res.success) { setError(res.message || 'Could not join league.'); setLoading(false); return; }
+      onLeagueChange(res.league);
+      setMessage('✓ Joined! You can now submit your ranking.');
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not join league.'); }
+    setLoading(false);
+  };
 
   const handleSubmit = async () => {
     setLoading(true); setError(''); setMessage('');
@@ -158,7 +170,15 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           </div>
         )}
         {isPlayer && hasSubmitted && <div style={S.successBox}>✓ Submitted — you can still update before the admin finalizes.</div>}
-        {!isPlayer && <div style={S.infoBox}>You are not a player in this league — admin view only.</div>}
+        {!isPlayer && canJoin && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={S.infoBox} >You are not yet a player in this league.</div>
+            <button style={S.primaryBtn} disabled={loading} onClick={handleJoin}>
+              {loading ? 'Joining…' : '→ Join league'}
+            </button>
+          </div>
+        )}
+        {!isPlayer && !canJoin && <div style={S.infoBox}>You are not a player in this league — admin view only.</div>}
         {error && <div style={S.errorBox}>{error}</div>}
         {message && <div style={S.successBox}>{message}</div>}
       </div>
