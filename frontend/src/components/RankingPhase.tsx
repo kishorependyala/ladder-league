@@ -398,10 +398,16 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
   const finalPositions: Record<string, number> = {};
   league.finalRanking.forEach((id, i) => { finalPositions[id] = i + 1; });
 
-  // Order rows by finalRanking if available, else by first submission
-  const orderedPlayers = league.finalRanking.length > 0
-    ? league.finalRanking.map(id => playersById[id]).filter(Boolean)
-    : league.players;
+  // Order rows by finalRanking if available, then append any players added after ranking was saved
+  const orderedPlayers = (() => {
+    if (league.finalRanking.length > 0) {
+      const fromRanking = league.finalRanking.map(id => playersById[id]).filter(Boolean) as Player[];
+      const ranked = new Set(league.finalRanking);
+      const unranked = league.players.filter(p => !ranked.has(p.id));
+      return [...fromRanking, ...unranked];
+    }
+    return league.players;
+  })();
 
   return (
     <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
