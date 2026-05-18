@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { finalizeRanking, getDisplayName, getMyRoles, isLeagueJoinable, isLeagueMember, joinLeague, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
+import LeagueRulesSummary from './LeagueRulesSummary';
 
 type RankingPhaseProps = {
   league: League;
@@ -147,6 +148,9 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           </div>
           <span style={statusPill(league.status)}>{league.status}</span>
         </div>
+
+        {/* Compact rules summary */}
+        <LeagueRulesSummary league={league} compact />
 
         {/* submission dots */}
         <div>

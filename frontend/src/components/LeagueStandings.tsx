@@ -5,59 +5,8 @@ import MatchGrid from './MatchGrid';
 import PendingMatches from './PendingMatches';
 import PlayoffBracket from './PlayoffBracket';
 import SubmitMatch from './SubmitMatch';
+import LeagueRulesSummary from './LeagueRulesSummary';
 
-function LeagueRulesSummary({ league }: { league: League }) {
-  const rules = league.rules;
-  const fmt = rules?.scoringFormat;
-  const sport = SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis'];
-  const winsNeeded = fmt?.wins_needed ?? sport.wins_needed;
-  const pointsToWin = fmt?.points_to_win ?? sport.points_to_win;
-  const winBy = fmt?.win_by ?? sport.win_by;
-  const maxPts = fmt?.max_points ?? sport.max_points;
-  const unit = sport.unit;
-  const unitPlural = sport.unit_plural;
-
-  const winPts   = rules?.scoring?.win    ?? 3;
-  const lossPts  = rules?.scoring?.loss   ?? 0;
-  const noGamePts= rules?.scoring?.noGame ?? -1;
-
-  const rows: { icon: string; label: string; value: string }[] = [
-    { icon: '🏓', label: 'Sport',             value: league.sport },
-    { icon: '🎯', label: 'Match format',       value: `Best of ${winsNeeded * 2 - 1} ${unitPlural} (first to win ${winsNeeded})` },
-    { icon: '📊', label: `Points per ${unit}`, value: `${pointsToWin} pts${winBy >= 2 ? `, win by ${winBy}` : ' exact'}${maxPts ? ` (cap ${maxPts})` : ''}` },
-    { icon: '📋', label: 'Scheduling',         value: rules?.matchFormat === 'round-robin' ? 'Round-robin (all vs all)' : 'Ad-hoc (anyone vs anyone)' },
-    { icon: '📅', label: 'Min matches/week',   value: String(rules?.minMatchesPerWeek ?? 1) },
-    { icon: '⚠️', label: 'Missed week penalty',value: `${rules?.penaltyPerMissedWeek ?? 1} pts deducted` },
-    { icon: '🏅', label: 'Win points',         value: `+${winPts} pts in standings` },
-    { icon: '📉', label: 'Loss points',        value: `${lossPts >= 0 ? '+' : ''}${lossPts} pts in standings` },
-    { icon: '⏸️', label: 'No-game penalty',    value: `${noGamePts} pts in standings` },
-    { icon: '🔥', label: 'Upset bonus',        value: `+${rules?.upsetBonus ?? 1} pts when lower-ranked beats higher-ranked` },
-  ];
-
-  const joinLabels: Record<string, string> = {
-    admin_only: 'Admin only — no self-join',
-    draft_only: 'Open during draft phase only',
-    until_ranked: 'Open until rankings finalised',
-    until_complete: 'Open any time until league completes',
-  };
-  const joinPolicy = rules?.joinPolicy ?? 'draft_only';
-  rows.push({ icon: '🚪', label: 'Join policy', value: joinLabels[joinPolicy] ?? joinPolicy });
-
-  return (
-    <div style={{ display: 'grid', gap: '0.5rem' }}>
-      <h3 style={{ ...subheading, marginBottom: '0.25rem' }}>League Rules</h3>
-      <div style={{ display: 'grid', gap: '0.35rem' }}>
-        {rows.map(({ icon, label, value }) => (
-          <div key={label} style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline', padding: '0.4rem 0.6rem', borderRadius: '0.55rem', background: '#fffbeb', border: '1px solid #fde68a' }}>
-            <span style={{ fontSize: '1rem', lineHeight: 1.2, flexShrink: 0 }}>{icon}</span>
-            <span style={{ ...mutedText, fontSize: '0.8rem', fontWeight: 600, minWidth: 160, flexShrink: 0 }}>{label}</span>
-            <span style={{ fontSize: '0.88rem', color: '#111827' }}>{value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 type LeagueStandingsProps = {
   league: League;
