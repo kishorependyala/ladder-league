@@ -394,6 +394,10 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
     return arr;
   }, [stackRanks, league.id]);
 
+  // How many players haven't submitted yet (pending columns shown as grayed placeholders)
+  const submittedIds = new Set(Object.keys(stackRanks));
+  const pendingCount = league.players.filter(p => !submittedIds.has(p.id)).length;
+
   // Compute avg rank and final position per player
   const finalPositions: Record<string, number> = {};
   league.finalRanking.forEach((id, i) => { finalPositions[id] = i + 1; });
@@ -418,6 +422,11 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
         </h3>
         <p style={{ ...mutedText, fontSize: '0.82rem', marginTop: '0.25rem' }}>
           Each column is one voter's ranking. Cells show the position they gave each player (1 = best). Final rank is the average position result.
+          {pendingCount > 0 && (
+            <span style={{ marginLeft: '0.5rem', color: '#d97706', fontWeight: 600 }}>
+              · {voterKeys.length}/{league.players.length} submitted
+            </span>
+          )}
         </p>
       </div>
 
@@ -429,6 +438,11 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
               {voterKeys.map((_, i) => (
                 <th key={i} style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, textAlign: 'center', minWidth: 36 }}>
                   #{i + 1}
+                </th>
+              ))}
+              {Array.from({ length: pendingCount }, (_, i) => (
+                <th key={`pending-${i}`} style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem', color: '#d1d5db', fontWeight: 600, textAlign: 'center', minWidth: 36 }}>
+                  ?
                 </th>
               ))}
               <th style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem', color: '#9ca3af', fontWeight: 600, textAlign: 'center', minWidth: 40 }}>Avg</th>
@@ -455,6 +469,11 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
                   {positions.map((pos, i) => (
                     <td key={i} style={{ padding: '0.35rem 0.25rem' }}>
                       <div style={rankCellStyle(pos, n)}>{pos > n ? '—' : pos}</div>
+                    </td>
+                  ))}
+                  {Array.from({ length: pendingCount }, (_, i) => (
+                    <td key={`pending-${i}`} style={{ padding: '0.35rem 0.25rem' }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 6, background: '#f9fafb', border: '1px dashed #e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', fontSize: '0.75rem', color: '#d1d5db' }}>—</div>
                     </td>
                   ))}
                   <td style={{ padding: '0.35rem 0.25rem' }}>
