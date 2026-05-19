@@ -144,19 +144,7 @@ function PlayoffBracket({ league, user, standings, isAdmin, onRefresh }: Playoff
     [standings],
   );
 
-  const previewGroups = useMemo(
-    () => computePreviewGroups(standings, league.players),
-    [league.players, standings],
-  );
-
   const loadBracket = useCallback(async () => {
-    if (league.status === 'active') {
-      setPlayoffs(null);
-      setMatches([]);
-      setError('');
-      return;
-    }
-
     setLoading(true);
     setError('');
     try {
@@ -194,7 +182,7 @@ function PlayoffBracket({ league, user, standings, isAdmin, onRefresh }: Playoff
     return map;
   }, [matches]);
 
-  const groups = league.status === 'active' ? previewGroups : playoffs?.groups || [];
+  const groups = playoffs?.groups || [];
 
   const handleSubmitted = async () => {
     setActiveMatchup(null);
@@ -202,19 +190,17 @@ function PlayoffBracket({ league, user, standings, isAdmin, onRefresh }: Playoff
     await loadBracket();
   };
 
+  if (league.status === 'active') return null;
+
   return (
     <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
       <div style={{ display: 'grid', gap: '0.35rem' }}>
-        <h3 style={subheading}>{league.status === 'active' ? 'Playoff Preview' : 'Playoff Bracket'}</h3>
-        {league.status === 'active' ? (
-          <p style={mutedText}>This is a preview — brackets update as standings change.</p>
-        ) : (
-          <p style={mutedText}>Seeds are locked. Winners advance automatically as playoff results are accepted.</p>
-        )}
+        <h3 style={subheading}>Playoff Bracket</h3>
+        <p style={mutedText}>Seeds are locked. Winners advance automatically as playoff results are accepted.</p>
       </div>
 
       {error && <div style={S.errorBox}>{error}</div>}
-      {loading && league.status !== 'active' && <p style={mutedText}>Loading bracket…</p>}
+      {loading && <p style={mutedText}>Loading bracket…</p>}
       {!loading && groups.length === 0 && <p style={mutedText}>No playoff bracket yet.</p>}
 
       {groups.length > 0 && (

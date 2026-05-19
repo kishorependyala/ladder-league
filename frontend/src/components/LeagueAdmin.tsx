@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -391,6 +391,15 @@ function LeagueCard({
           {league.status === 'ranked' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start league
+            </button>
+          )}
+          {league.status === 'active' && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={() => act(`playoffs-${league.id}`, async () => {
+              const r = await startPlayoffs(league.id, user.phone);
+              if (!r.success || !r.league) throw new Error(r.message || 'Failed to start playoffs');
+              return r.league;
+            })}>
+              🏆 Start Playoffs
             </button>
           )}
         </div>

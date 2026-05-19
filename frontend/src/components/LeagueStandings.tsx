@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, startPlayoffs, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User, SPORT_SCORING } from '../api';
+import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
 import MatchGrid from './MatchGrid';
 import PendingMatches from './PendingMatches';
@@ -33,7 +33,6 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [showSubmitMatch, setShowSubmitMatch] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [startingPlayoffs, setStartingPlayoffs] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
 
@@ -106,22 +105,6 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
     loadData();
   }, [loadData]);
 
-  const handleStartPlayoffs = async () => {
-    setStartingPlayoffs(true);
-    setError('');
-    try {
-      const response = await startPlayoffs(currentLeague.id, user.phone);
-      if (!response.success || !response.league) {
-        throw new Error(response.message || 'Could not start playoffs.');
-      }
-      setCurrentLeague(response.league);
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not start playoffs.');
-    }
-    setStartingPlayoffs(false);
-  };
-
   const matchLogsByPlayer = useMemo(() => {
     const map = new Map<string, Map<string, MatchLogEntry>>();
     standings.forEach(row => {
@@ -176,11 +159,6 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             {(currentLeague.status === 'active' || currentLeague.status === 'playoffs') && (
               <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
                 ➕ Add Score
-              </button>
-            )}
-            {currentLeague.status === 'active' && isAdmin && (
-              <button style={S.smallBtn} onClick={handleStartPlayoffs} disabled={startingPlayoffs || loading}>
-                {startingPlayoffs ? 'Starting…' : '🏆 Start Playoffs'}
               </button>
             )}
           </div>
@@ -392,7 +370,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         )}
       </div>
 
-      {(currentLeague.status === 'active' || currentLeague.status === 'playoffs' || currentLeague.status === 'completed') && (
+      {(currentLeague.status === 'playoffs' || currentLeague.status === 'completed') && (
         <PlayoffBracket
           league={currentLeague}
           user={user}
