@@ -284,16 +284,18 @@ function LeagueCard({
 
   const handleCopyReminder = () => {
     const total = league.players.length;
-    const none = league.players.filter(p => !(league.stackRanks?.[p.id]?.length));
-    const partial = league.players.filter(p => {
+    const pending = league.players.filter(p => {
       const n = league.stackRanks?.[p.id]?.length ?? 0;
-      return n > 0 && n < total;
+      return n < total;
     });
     const lines: string[] = [`📋 ${league.name} — ranking needed`];
-    if (none.length) lines.push(`Please submit: ${none.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
-    if (partial.length) lines.push(`Please re-rank (new players joined): ${partial.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
-    if (!none.length && !partial.length) lines.push('✅ Everyone has submitted!');
-    else lines.push('Please close out your ranking asap 🙏');
+    if (!pending.length) {
+      lines.push('✅ Everyone has submitted!');
+    } else {
+      lines.push('Please close out your ranking — either you haven\'t ranked yet or new players joined since you last ranked:\n');
+      pending.forEach(p => lines.push(`• ${p.firstName} ${p.lastName}`));
+      lines.push('\nPlease submit asap 🙏');
+    }
     const text = lines.join('\n');
     navigator.clipboard.writeText(text).catch(() => {
       const ta = document.createElement('textarea');
