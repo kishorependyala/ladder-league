@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { auditData, fixPlayerIds, migrateLeagueIds, syncPlayerNames, type DataIssue } from '../api';
+import { auditData, fixPlayerIds, migrateLeagueIds, purgeStaleVotes, syncPlayerNames, type DataIssue } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type Props = { phone: string };
@@ -12,6 +12,7 @@ const severityStyle = (s: string): React.CSSProperties =>
 const fixLabels: Record<string, string> = {
   migrate_league_ids: '🔁 Migrate league IDs',
   fix_player_ids: '👤 Fix player IDs',
+  purge_stale_votes: '🗳️ Stale votes from removed players',
 };
 
 export default function MaintenanceTab({ phone }: Props) {
@@ -43,6 +44,7 @@ export default function MaintenanceTab({ phone }: Props) {
       let res: unknown;
       if (fixKey === 'migrate_league_ids') res = await migrateLeagueIds(phone);
       else if (fixKey === 'fix_player_ids') res = await fixPlayerIds(phone);
+      else if (fixKey === 'purge_stale_votes') res = await purgeStaleVotes(phone);
       else { setFixError('Unknown fix.'); setRunning(null); return; }
       setResults(prev => ({ ...prev, [fixKey]: res }));
       // Re-run audit to reflect new state
@@ -195,6 +197,22 @@ function FixResult({ fixKey, result }: { fixKey: string; result: unknown }) {
           {fixed.map((f, i) => (
             <div key={i} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
               In <em>{f.leagueName}</em>: <code>{f.oldId}</code> → <code>{f.newId}</code>
+            </div>
+          ))}
+        </div>
+      );
+  }
+  if (fixKey === 'purge_stale_votes') {
+    const purged = (r.purged as { leagueId: string; leagueName: string; staleVoterIds: string[]; staleFinalRankingIds: string[] }[]) ?? [];
+    return purged.length === 0
+      ? <div style={S.successBox}>✅ No stale votes or ranking entries found.</div>
+      : (
+        <div style={S.successBox}>
+          ✅ Cleaned up {purged.length} league{purged.length !== 1 ? 's' : ''}:
+          {purged.map((p, i) => (
+            <div key={i} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+              <em>{p.leagueName}</em>: removed {p.staleVoterIds.length} stale vote(s)
+              {p.staleFinalRankingIds.length > 0 && `, ${p.staleFinalRankingIds.length} stale finalRanking entry(ies)`}
             </div>
           ))}
         </div>

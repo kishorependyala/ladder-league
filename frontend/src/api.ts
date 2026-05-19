@@ -543,6 +543,10 @@ export function fixPlayerIds(phone: string): Promise<{ success: boolean; fixed: 
   return post('/api/admin/maintenance/fix-player-ids', { phone });
 }
 
+export function purgeStaleVotes(phone: string): Promise<{ success: boolean; purged: { leagueId: string; leagueName: string; staleVoterIds: string[]; staleFinalRankingIds: string[] }[]; message?: string }> {
+  return post('/api/admin/maintenance/purge-stale-votes', { phone });
+}
+
 
 export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
   return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);

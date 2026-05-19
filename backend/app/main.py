@@ -1370,6 +1370,28 @@ def api_maintenance_audit(phone: str = Query(...)):
                     "fix": None,
                 })
 
+    # ── 4. Stale stackRanks / finalRanking from removed players ──────
+    for lg in list_leagues():
+        player_ids = {p["id"] for p in lg.get("players", [])}
+        stale_votes = [k for k in lg.get("stackRanks", {}) if k not in player_ids]
+        stale_ranking = [k for k in lg.get("finalRanking", []) if k not in player_ids]
+        if stale_votes or stale_ranking:
+            parts = []
+            if stale_votes:
+                parts.append(f"{len(stale_votes)} stale vote(s)")
+            if stale_ranking:
+                parts.append(f"{len(stale_ranking)} stale finalRanking entry(ies)")
+            issues.append({
+                "type": "stale_player_data",
+                "severity": "warning",
+                "leagueId": lg["id"],
+                "leagueName": lg.get("name", lg["id"]),
+                "staleVoterIds": stale_votes,
+                "staleFinalRankingIds": stale_ranking,
+                "description": f"League '{lg.get('name', lg['id'])}' has {' and '.join(parts)} from players no longer in the league",
+                "fix": "purge_stale_votes",
+            })
+
     return {"success": True, "issues": issues, "total": len(issues)}
 
 
@@ -1462,6 +1484,40 @@ def api_fix_player_ids(data: dict = Body(...)):
             save_league(lg)
 
     return {"success": True, "fixed": fixed}
+
+
+@app.post("/api/admin/maintenance/purge-stale-votes")
+def api_purge_stale_votes(data: dict = Body(...)):
+    """Remove stackRanks and finalRanking entries for players no longer in the league."""
+    phone = data.get("phone")
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+    from app.leagues import list_leagues, save_league
+
+    purged = []
+
+    for lg in list_leagues():
+        player_ids = {p["id"] for p in lg.get("players", [])}
+        stale_votes = [k for k in lg.get("stackRanks", {}) if k not in player_ids]
+        stale_ranking = [k for k in lg.get("finalRanking", []) if k not in player_ids]
+
+        if not stale_votes and not stale_ranking:
+            continue
+
+        for k in stale_votes:
+            del lg["stackRanks"][k]
+        if stale_ranking:
+            lg["finalRanking"] = [k for k in lg["finalRanking"] if k in player_ids]
+
+        save_league(lg)
+        purged.append({
+            "leagueId": lg["id"],
+            "leagueName": lg.get("name"),
+            "staleVoterIds": stale_votes,
+            "staleFinalRankingIds": stale_ranking,
+        })
+
+    return {"success": True, "purged": purged}
 
 
 @app.get("/api/admin/config")

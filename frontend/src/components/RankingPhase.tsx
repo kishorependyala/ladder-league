@@ -90,7 +90,8 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   const isAdmin    = Boolean(roles?.isSuperAdmin || roles?.adminLeagueIds.includes(league.id) || league.adminIds.includes(user.id));
   const isPlayer   = isLeagueMember(league, user);
   const canJoin    = !isPlayer && isLeagueJoinable(league);
-  const submissions = Object.keys(league.stackRanks || {}).length;
+  // Count only submissions from players currently in the league (ignores stale votes from removed players)
+  const submissions = league.players.filter(p => league.stackRanks?.[p.id]).length;
   const hasSubmitted = Boolean(league.stackRanks?.[leaguePlayerId]);
 
   const handleJoin = async () => {
@@ -407,7 +408,9 @@ function RankingOverview({ league, playersById, userId }: RankingOverviewProps) 
   // Stable-shuffle voter keys so no one can infer submission order from index
   // Use a simple deterministic shuffle seeded by league.id
   const voterKeys = useMemo(() => {
-    const keys = Object.keys(stackRanks).sort();
+    // Only include votes from players currently in the league (skip stale entries from removed players)
+    const currentPlayerIds = new Set(league.players.map(p => p.id));
+    const keys = Object.keys(stackRanks).filter(k => currentPlayerIds.has(k)).sort();
     // Fisher-Yates seeded by sum of charCodes of league.id
     const seed = league.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     const arr = [...keys];
