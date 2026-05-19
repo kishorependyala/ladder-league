@@ -179,6 +179,50 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             )}
           </div>
         </div>
+        {/* Current block banner */}
+        {currentLeague.status === 'active' && currentLeague.blocks && currentLeague.blocks.length > 0 && (() => {
+          const blocks = currentLeague.blocks!;
+          const todayIso = new Date().toISOString().slice(0, 10);
+          const curIdx = blocks.findIndex(b => todayIso >= b.startDate && todayIso < b.endDate);
+          const totalBlocks = blocks.length;
+          if (curIdx >= 0) {
+            const cur = blocks[curIdx];
+            const msLeft = new Date(cur.endDate).getTime() - Date.now();
+            const daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '0.55rem 0.8rem', background: '#fef3c7', borderRadius: '0.65rem', border: '1px solid #fde68a' }}>
+                <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.88rem' }}>
+                  📅 Block {curIdx + 1} of {totalBlocks}
+                </span>
+                {/* mini progress bar */}
+                <div style={{ flex: 1, minWidth: 80, height: 7, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${((curIdx + 1) / totalBlocks) * 100}%`, background: '#f59e0b', borderRadius: 999 }} />
+                </div>
+                <span style={{ fontSize: '0.8rem', color: '#78350f' }}>
+                  {new Date(cur.startDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  {' → '}
+                  {new Date(cur.endDate + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  {' · '}
+                  <strong>{daysLeft}d left</strong>
+                </span>
+                {curIdx === totalBlocks - 1 && (
+                  <span style={{ fontSize: '0.72rem', background: '#ede9fe', color: '#6d28d9', borderRadius: '0.3rem', padding: '0.15rem 0.45rem', fontWeight: 700 }}>
+                    🏆 Playoffs next
+                  </span>
+                )}
+              </div>
+            );
+          }
+          // All blocks done
+          if (todayIso >= blocks[totalBlocks - 1].endDate) {
+            return (
+              <div style={{ padding: '0.5rem 0.8rem', background: '#ede9fe', borderRadius: '0.65rem', border: '1px solid #c4b5fd', fontSize: '0.85rem', color: '#6d28d9', fontWeight: 600 }}>
+                🏆 All {totalBlocks} blocks complete — playoffs can begin.
+              </div>
+            );
+          }
+          return null;
+        })()}
         {error && <div style={S.errorBox}>{error}</div>}
         {loading && <p style={mutedText}>Loading standings…</p>}
       </div>

@@ -152,24 +152,50 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
         {/* Compact rules summary */}
         <LeagueRulesSummary league={league} compact />
 
-        {/* submission dots */}
+        {/* submission progress */}
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-            <span style={{ ...mutedText, fontSize: '0.82rem' }}>Submitted</span>
-            <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem' }}>{submissions} / {league.players.length}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', alignItems: 'center' }}>
+            <span style={{ ...mutedText, fontSize: '0.82rem' }}>Rankings submitted</span>
+            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: submissions === league.players.length ? '#16a34a' : '#78350f' }}>
+              {submissions} / {league.players.length}
+            </span>
           </div>
+          {/* progress bar: green = submitted, gray = pending */}
+          <div style={{ height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden', marginBottom: '0.6rem' }}>
+            <div style={{
+              height: '100%',
+              width: `${league.players.length ? (submissions / league.players.length) * 100 : 0}%`,
+              background: submissions === league.players.length ? '#16a34a' : '#22c55e',
+              borderRadius: 999,
+              transition: 'width 0.4s ease',
+            }} />
+          </div>
+          {/* per-player dots: green = submitted, gray = pending */}
           <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-            {league.players.map((p, i) => {
+            {league.players.map(p => {
               const done = !!league.stackRanks?.[p.id];
               const isMe = p.id === leaguePlayerId;
               return (
-                <div key={p.id} title={done ? `${getDisplayName(p)} ✓` : `${getDisplayName(p)} — pending`}
-                  style={{ width: 32, height: 32, borderRadius: 999, background: done ? '#22c55e' : '#fde68a', border: `2px solid ${isMe ? '#f59e0b' : done ? '#16a34a' : '#fed7aa'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.72rem', fontWeight: 700, color: done ? '#fff' : '#92400e' }}>
-                  {done ? '✓' : i + 1}
+                <div key={p.id} title={done ? `${getDisplayName(p)} ✓ submitted` : `${getDisplayName(p)} — pending`}
+                  style={{
+                    width: 30, height: 30, borderRadius: 999,
+                    background: done ? '#22c55e' : '#d1d5db',
+                    border: `2px solid ${isMe ? '#f59e0b' : done ? '#16a34a' : '#9ca3af'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', fontWeight: 700,
+                    color: done ? '#fff' : '#6b7280',
+                    boxShadow: isMe ? '0 0 0 2px rgba(245,158,11,0.4)' : 'none',
+                  }}>
+                  {done ? '✓' : isMe ? '!' : '·'}
                 </div>
               );
             })}
           </div>
+          {!hasSubmitted && isPlayer && (
+            <p style={{ margin: '0.45rem 0 0', fontSize: '0.78rem', color: '#d97706', fontWeight: 600 }}>
+              ⚠ You haven't submitted your ranking yet.
+            </p>
+          )}
         </div>
 
         {isPlayer && !hasSubmitted && (

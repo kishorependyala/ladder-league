@@ -35,8 +35,9 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
   useEffect(() => { inputRef.current?.focus(); }, [step]);
 
   const handlePhoneContinue = async () => {
-    const cleaned = phone.replace(/\D/g, '');
-    if (!cleaned) { setError('Please enter your phone number.'); return; }
+    const digits = phone.replace(/\D/g, '');
+    const cleaned = digits.length > 10 ? digits.slice(-10) : digits;
+    if (!cleaned || cleaned.length < 10) { setError('Please enter a valid 10-digit phone number.'); return; }
     setError(''); setLoading(true);
     try {
       const data = await authCheckPhone(cleaned);
@@ -136,7 +137,7 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
               inputMode="numeric"
               placeholder="Enter your phone number"
               value={phone}
-              onChange={e => { setPhone(e.target.value.replace(/\D/g, '')); setError(''); }}
+              onChange={e => { setPhone(e.target.value); setError(''); }}
               onKeyDown={e => e.key === 'Enter' && handlePhoneContinue()}
               style={S.inp}
               autoComplete="tel"

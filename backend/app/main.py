@@ -7,8 +7,9 @@ from dotenv import load_dotenv
 import io
 import json
 import os
+import re
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, date
 
 # Load .env from the backend directory (ignored in prod; Azure uses App Service env vars)
 _BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -16,6 +17,54 @@ load_dotenv(os.path.join(_BACKEND_DIR, '.env'))
 
 from app.utils.email_sender import send_email
 from app.utils.pin_reset import generate_code, verify_code
+
+def normalize_phone(phone: str) -> str:
+    """Strip all non-digits and return the last 10 digits (ignores country code)."""
+    if not phone:
+        return ''
+    digits = re.sub(r'\D', '', phone)
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
+def generate_blocks(start_iso: str, block_duration_days: int, end_iso: Optional[str] = None, default_num: int = 8) -> list:
+    """
+    Generate a list of blocks from start_iso, each block_duration_days long.
+    If end_iso is given, blocks span up to that date; otherwise generates default_num blocks.
+    Each block: { index, startDate (ISO), endDate (ISO) }
+    """
+    try:
+        start = date.fromisoformat(start_iso[:10])
+    except Exception:
+        start = date.today()
+    end_date = None
+    if end_iso:
+        try:
+            end_date = date.fromisoformat(end_iso[:10])
+        except Exception:
+            pass
+
+    blocks = []
+    current = start
+    idx = 0
+    while True:
+        block_end = current + timedelta(days=block_duration_days)
+        if end_date:
+            if current >= end_date:
+                break
+            if block_end > end_date:
+                block_end = end_date
+        blocks.append({
+            "index": idx,
+            "startDate": current.isoformat(),
+            "endDate": block_end.isoformat(),
+        })
+        idx += 1
+        current = block_end
+        if end_date and current >= end_date:
+            break
+        if not end_date and idx >= default_num:
+            break
+    return blocks
 
 app = FastAPI()
 
@@ -84,11 +133,14 @@ def load_users() -> list:
 def get_user_by_phone(phone: str) -> Optional[dict]:
     if not os.path.exists(USERS_DIR):
         return None
+    normalized = normalize_phone(phone)
+    if not normalized:
+        return None
     for fname in os.listdir(USERS_DIR):
         if fname.endswith('.json'):
             with open(os.path.join(USERS_DIR, fname), 'r') as f:
                 u = json.load(f)
-            if u.get('phone') == phone:
+            if normalize_phone(u.get('phone', '')) == normalized:
                 return u
     return None
 
@@ -185,7 +237,7 @@ def login_with_pin(data: dict = Body(...)):
 
 @app.post("/api/auth/request-pin-reset")
 def request_pin_reset(data: dict = Body(...)):
-    phone = data.get('phone')
+    phone = normalize_phone(data.get('phone', ''))
     user = get_user_by_phone(phone)
     if not user or not user.get('email'):
         return {"success": False, "message": "No email on file for this account"}
@@ -200,7 +252,7 @@ def request_pin_reset(data: dict = Body(...)):
 
 @app.post("/api/auth/verify-pin-reset")
 def verify_pin_reset(data: dict = Body(...)):
-    phone = data.get('phone')
+    phone = normalize_phone(data.get('phone', ''))
     code = data.get('code')
     new_pin = data.get('newPin')
     if not verify_code(phone, code):
@@ -214,10 +266,11 @@ def verify_pin_reset(data: dict = Body(...)):
 
 @app.post("/api/signup")
 def signup(user: User = Body(...)):
-    if get_user_by_phone(user.phone):
+    normalized = normalize_phone(user.phone)
+    if get_user_by_phone(normalized):
         return {"success": False, "message": "User already exists"}
     uid = _next_user_id()
-    user_data = {**user.dict(), "id": uid, "createdAt": datetime.now().isoformat()}
+    user_data = {**user.dict(), "phone": normalized, "id": uid, "createdAt": datetime.now().isoformat()}
     save_user(user_data)
     return {"success": True, "user": user_data}
 
@@ -598,9 +651,40 @@ def api_start_league(league_id: str, data: dict = Body(...)):
     if not lg.get("finalRanking"):
         lg["finalRanking"] = [p["id"] for p in lg["players"]]
     lg["status"] = "active"
-    lg["startedAt"] = datetime.now().isoformat()
+    started_at = datetime.now().isoformat()
+    lg["startedAt"] = started_at
+    # Auto-generate blocks if not already set
+    if not lg.get("blocks"):
+        block_days = (lg.get("rules") or {}).get("blockDurationDays") or 7
+        start_iso = (lg.get("startDate") or started_at)[:10]
+        end_iso = lg.get("endDate")
+        lg["blocks"] = generate_blocks(start_iso, block_days, end_iso)
     save_league(lg)
     return {"success": True, "league": lg}
+
+
+@app.put("/api/leagues/{league_id}/blocks")
+def api_update_blocks(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg.get("adminIds", []) and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+    blocks = data.get("blocks")
+    if not isinstance(blocks, list):
+        return {"success": False, "message": "blocks must be a list"}
+    # Re-index and validate
+    clean = []
+    for i, b in enumerate(blocks):
+        if not b.get("startDate") or not b.get("endDate"):
+            return {"success": False, "message": f"Block {i} missing startDate or endDate"}
+        clean.append({"index": i, "startDate": b["startDate"][:10], "endDate": b["endDate"][:10]})
+    lg["blocks"] = clean
+    save_league(lg)
+    return {"success": True, "league": lg}
+
 
 
 @app.post("/api/leagues/{league_id}/start-playoffs")

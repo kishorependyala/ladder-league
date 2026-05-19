@@ -101,6 +101,12 @@ export interface Playoffs {
   generatedAt: string;
 }
 
+export interface LeagueBlock {
+  index: number;
+  startDate: string;
+  endDate: string;
+}
+
 export interface League {
   id: string;
   name: string;
@@ -114,7 +120,9 @@ export interface League {
   stackRanks: Record<string, string[]>;
   finalRanking: string[];
   createdAt: string;
+  startedAt?: string;
   playoffs?: Playoffs;
+  blocks?: LeagueBlock[];
 }
 
 export interface Sport {
@@ -328,6 +336,14 @@ export function finalizeRanking(id: string, phone: string, rankedIds?: string[])
 
 export function startLeague(id: string, phone: string): Promise<{ success: boolean; league: League }> {
   return post(`/api/leagues/${encodeURIComponent(id)}/start`, { phone });
+}
+
+export function updateLeagueBlocks(id: string, phone: string, blocks: LeagueBlock[]): Promise<{ success: boolean; league: League; message?: string }> {
+  return fetch(`${API_BASE}/api/leagues/${encodeURIComponent(id)}/blocks`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone, blocks }),
+  }).then(r => r.json());
 }
 
 export function startPlayoffs(leagueId: string, phone: string): Promise<{ success: boolean; league?: League; message?: string }> {

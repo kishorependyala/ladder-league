@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, type League, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -14,6 +14,171 @@ type LeagueAdminProps = {
 };
 
 type AddMode = 'search' | 'new';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtDate(iso: string) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function blockDays(b: LeagueBlock) {
+  const diff = (new Date(b.endDate).getTime() - new Date(b.startDate).getTime()) / 86400000;
+  return Math.round(diff);
+}
+
+function currentBlockIndex(blocks: LeagueBlock[]): number {
+  const today = new Date().toISOString().slice(0, 10);
+  for (let i = 0; i < blocks.length; i++) {
+    if (today >= blocks[i].startDate && today < blocks[i].endDate) return i;
+  }
+  if (blocks.length && new Date().toISOString().slice(0, 10) >= blocks[blocks.length - 1].endDate) return blocks.length; // all done
+  return -1;
+}
+
+// ── ScheduleEditor ────────────────────────────────────────────────────────────
+function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user: User; onLeagueUpdate: (l: League) => void }) {
+  const defaultBlocks = (): LeagueBlock[] => league.blocks ?? [];
+  const [blocks, setBlocks] = useState<LeagueBlock[]>(defaultBlocks);
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editStart, setEditStart] = useState('');
+  const [editEnd, setEditEnd] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  // keep in sync when league prop changes
+  useEffect(() => { setBlocks(league.blocks ?? []); }, [league.blocks]);
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const curIdx = currentBlockIndex(blocks);
+
+  const startEdit = (i: number) => {
+    setEditIdx(i);
+    setEditStart(blocks[i].startDate);
+    setEditEnd(blocks[i].endDate);
+    setError('');
+    setMessage('');
+  };
+
+  const cancelEdit = () => { setEditIdx(null); setError(''); };
+
+  const saveEdit = () => {
+    if (!editStart || !editEnd || editEnd <= editStart) {
+      setError('End date must be after start date.');
+      return;
+    }
+    const updated = blocks.map((b, i) => i === editIdx ? { ...b, startDate: editStart, endDate: editEnd } : b);
+    setBlocks(updated);
+    setEditIdx(null);
+    setError('');
+  };
+
+  const addBlock = () => {
+    const last = blocks[blocks.length - 1];
+    const start = last ? last.endDate : todayIso;
+    const blockDays = (league.rules?.blockDurationDays ?? 7);
+    const endDate = new Date(new Date(start).getTime() + blockDays * 86400000).toISOString().slice(0, 10);
+    setBlocks(prev => [...prev, { index: prev.length, startDate: start, endDate: endDate }]);
+  };
+
+  const removeBlock = (i: number) => {
+    setBlocks(prev => prev.filter((_, idx) => idx !== i).map((b, idx) => ({ ...b, index: idx })));
+  };
+
+  const saveAll = async () => {
+    setSaving(true); setError(''); setMessage('');
+    try {
+      const res = await updateLeagueBlocks(league.id, user.phone, blocks);
+      if (res.success) { onLeagueUpdate(res.league); setMessage('Schedule saved.'); }
+      else setError(res.message || 'Failed to save.');
+    } catch { setError('Could not reach server.'); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <p style={{ ...mutedText, margin: 0, fontSize: '0.82rem' }}>
+          Each block is a play window. Default duration: <strong>{league.rules?.blockDurationDays ?? 7} days</strong>. Edit any block's dates below.
+        </p>
+        <button style={{ ...S.smallBtn, fontSize: '0.78rem', padding: '0.25rem 0.65rem' }} onClick={addBlock}>+ Add block</button>
+      </div>
+
+      {error && <div style={S.errorBox}>{error}</div>}
+      {message && <div style={S.successBox}>{message}</div>}
+
+      <div style={{ display: 'grid', gap: '0.4rem' }}>
+        {blocks.map((b, i) => {
+          const isCurrent = i === curIdx;
+          const isPast = b.endDate <= todayIso;
+          const isFuture = b.startDate > todayIso;
+          const isEditing = editIdx === i;
+
+          return (
+            <div key={i} style={{
+              display: 'grid', gap: '0.35rem',
+              padding: '0.6rem 0.75rem',
+              borderRadius: '0.65rem',
+              border: `1.5px solid ${isCurrent ? '#f59e0b' : isPast ? '#e5e7eb' : '#fed7aa'}`,
+              background: isCurrent ? '#fffbeb' : isPast ? '#f9fafb' : '#fff',
+              opacity: isPast ? 0.75 : 1,
+            }}>
+              {isEditing ? (
+                <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f', minWidth: 56 }}>Block {i + 1}</span>
+                    <label style={{ fontSize: '0.78rem', color: '#6b7280' }}>Start</label>
+                    <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
+                      style={{ ...S.inp, padding: '0.3rem 0.5rem', fontSize: '0.85rem', width: 'auto' }} />
+                    <label style={{ fontSize: '0.78rem', color: '#6b7280' }}>End</label>
+                    <input type="date" value={editEnd} onChange={e => setEditEnd(e.target.value)}
+                      style={{ ...S.inp, padding: '0.3rem 0.5rem', fontSize: '0.85rem', width: 'auto' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <button style={{ ...S.smallBtn, fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} onClick={saveEdit}>✓ Apply</button>
+                    <button style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.2rem 0.6rem' }} onClick={cancelEdit}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem', minWidth: 56 }}>Block {i + 1}</span>
+                  {isCurrent && <span style={{ fontSize: '0.7rem', background: '#fef3c7', color: '#92400e', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontWeight: 700 }}>▶ Current</span>}
+                  {isPast && !isCurrent && <span style={{ fontSize: '0.7rem', background: '#f3f4f6', color: '#9ca3af', borderRadius: '0.3rem', padding: '0.1rem 0.4rem' }}>Done</span>}
+                  {isFuture && <span style={{ fontSize: '0.7rem', background: '#eff6ff', color: '#3b82f6', borderRadius: '0.3rem', padding: '0.1rem 0.4rem' }}>Upcoming</span>}
+                  <span style={{ flex: 1, color: '#374151', fontSize: '0.85rem' }}>
+                    {fmtDate(b.startDate)} → {fmtDate(b.endDate)}
+                    <span style={{ marginLeft: '0.5rem', color: '#9ca3af', fontSize: '0.78rem' }}>({blockDays(b)} days)</span>
+                  </span>
+                  <button style={{ ...S.smallOutlineBtn, fontSize: '0.72rem', padding: '0.18rem 0.5rem' }} onClick={() => startEdit(i)}>✏️ Edit</button>
+                  {blocks.length > 1 && (
+                    <button style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.72rem', padding: '0.18rem 0.5rem' }} onClick={() => removeBlock(i)}>✕</button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Playoffs indicator after last block */}
+        {blocks.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '0.65rem', border: '1.5px dashed #a78bfa', background: '#faf5ff', opacity: 0.9 }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#7c3aed' }}>🏆 Playoffs / Knockout</span>
+            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>starts after Block {blocks.length} ({fmtDate(blocks[blocks.length - 1].endDate)})</span>
+          </div>
+        )}
+        {blocks.length === 0 && (
+          <p style={mutedText}>No blocks yet. Click "+ Add block" to create the schedule.</p>
+        )}
+      </div>
+
+      <button style={S.smallBtn} disabled={saving || editIdx !== null} onClick={saveAll}>
+        {saving ? 'Saving…' : '💾 Save schedule'}
+      </button>
+    </div>
+  );
+}
+
+
 
 function LeagueCard({
   league,
@@ -31,7 +196,7 @@ function LeagueCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'players' | 'rules'>('players');
+  const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule'>('players');
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(league.name);
@@ -194,10 +359,10 @@ function LeagueCard({
 
       {/* tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>
-        {(['players', 'rules'] as const).map(t => (
+        {((['players', 'rules', ...(['active','playoffs','completed'].includes(league.status) ? ['schedule'] : [])] as const)).map(t => (
           <button
             key={t}
-            onClick={() => setActiveTab(t)}
+            onClick={() => setActiveTab(t as 'players' | 'rules' | 'schedule')}
             style={{
               padding: '0.5rem 1rem',
               background: 'none',
@@ -210,7 +375,7 @@ function LeagueCard({
               cursor: 'pointer',
             }}
           >
-            {t === 'players' ? `👥 Players (${league.players.length})` : '📋 League Rules'}
+            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : '📅 Schedule'}
           </button>
         ))}
       </div>
@@ -222,15 +387,48 @@ function LeagueCard({
               ? <p style={mutedText}>No players yet.</p>
               : (
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
+                  {/* Ranking summary bar when in ranking phase */}
+                  {league.status === 'ranking' && (() => {
+                    const submitted = league.players.filter(p => !!league.stackRanks?.[p.id]).length;
+                    const total = league.players.length;
+                    const pct = total ? (submitted / total) * 100 : 0;
+                    return (
+                      <div style={{ padding: '0.6rem 0.7rem', background: '#f9fafb', borderRadius: '0.7rem', border: '1px solid #e5e7eb', marginBottom: '0.2rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151' }}>Ranking progress</span>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: submitted === total ? '#16a34a' : '#92400e' }}>
+                            {submitted}/{total} submitted
+                          </span>
+                        </div>
+                        <div style={{ height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: submitted === total ? '#16a34a' : '#22c55e', borderRadius: 999, transition: 'width 0.4s ease' }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {league.players.map(p => {
                     const isAdmin = adminSet.has(p.id);
                     const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
+                    const rankingStatus = league.status === 'ranking'
+                      ? (!!league.stackRanks?.[p.id] ? 'submitted' : 'pending')
+                      : null;
                     return (
-                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
+                      <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: `1px solid ${rankingStatus === 'pending' ? '#fca5a5' : '#fde68a'}` }}>
                         <span style={{ flex: 1, color: '#78350f', fontWeight: 500, fontSize: '0.92rem' }}>
                           {p.firstName} {p.lastName}
                           {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>admin</span>}
                         </span>
+                        {rankingStatus && (
+                          <span style={{
+                            fontSize: '0.72rem', fontWeight: 700, borderRadius: '0.35rem', padding: '0.18rem 0.5rem',
+                            background: rankingStatus === 'submitted' ? '#dcfce7' : '#d1d5db',
+                            color: rankingStatus === 'submitted' ? '#15803d' : '#4b5563',
+                            border: `1px solid ${rankingStatus === 'submitted' ? '#86efac' : '#9ca3af'}`,
+                            whiteSpace: 'nowrap' as const,
+                          }}>
+                            {rankingStatus === 'submitted' ? '✓ Ranked' : '· Pending'}
+                          </span>
+                        )}
                         <span style={{ ...mutedText, fontSize: '0.8rem' }}>{p.phone}</span>
                         {!isAdmin && (
                           <button
@@ -317,6 +515,11 @@ function LeagueCard({
           adminPhone={user.phone}
           onUpdated={onLeagueUpdate}
         />
+      )}
+
+      {/* Schedule tab */}
+      {activeTab === 'schedule' && (
+        <ScheduleEditor league={league} user={user} onLeagueUpdate={onLeagueUpdate} />
       )}
     </div>
   );
