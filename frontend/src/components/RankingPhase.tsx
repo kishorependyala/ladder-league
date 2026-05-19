@@ -20,7 +20,26 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   const [selected, setSelected] = useState<number | null>(null); // tap-to-select index
 
   const touchDragIndex = useRef<number | null>(null);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const touchIsDragging = useRef<boolean>(false);
+  const skipNextClick = useRef<boolean>(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Deselect when tapping outside the ranking list
+  useEffect(() => {
+    if (selected === null) return;
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (listRef.current && !listRef.current.contains(e.target as Node)) {
+        setSelected(null);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [selected]);
 
   useEffect(() => {
     getMyRoles(user.phone).then(setRoles).catch(() => setRoles(null));
@@ -69,20 +88,34 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
   const onDrop      = (i: number) => { if (dragIndex !== null) reorder(dragIndex, i); setDragIndex(null); setDragOverIndex(null); };
   const onDragEnd   = () => { setDragIndex(null); setDragOverIndex(null); };
 
-  // ── Touch drag (long-press move on mobile) ─────────────────────────
+  // ── Touch (mobile): tap-to-select, then drag selected item to reorder ────────
+  // Accidental swipes on unselected rows do nothing — item must be selected first.
   const onTouchStart = (e: React.TouchEvent, i: number) => {
     touchDragIndex.current = i;
+    touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    touchIsDragging.current = false;
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
+    if (!touchStartPos.current || touchDragIndex.current === null) return;
+    const dx = Math.abs(e.touches[0].clientX - touchStartPos.current.x);
+    const dy = Math.abs(e.touches[0].clientY - touchStartPos.current.y);
+    // Only start dragging if the touched item is already selected AND finger moved enough
+    if (selected !== touchDragIndex.current || (dx < 8 && dy < 8)) return;
+    touchIsDragging.current = true;
+    e.preventDefault(); // prevent page scroll only while actively dragging a selected item
     const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY);
     const row = el?.closest('[data-rank-index]') as HTMLElement | null;
     if (row) setDragOverIndex(Number(row.dataset.rankIndex));
   };
   const onTouchEnd = () => {
-    if (touchDragIndex.current !== null && dragOverIndex !== null)
+    if (touchIsDragging.current && touchDragIndex.current !== null && dragOverIndex !== null) {
       reorder(touchDragIndex.current, dragOverIndex);
+      setSelected(null);
+      skipNextClick.current = true; // suppress the synthetic click that follows touchend
+    }
     touchDragIndex.current = null;
+    touchStartPos.current = null;
+    touchIsDragging.current = false;
     setDragIndex(null);
     setDragOverIndex(null);
   };
@@ -224,7 +257,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
             <h3 style={subheading}>
               Your ranking {hasSubmitted && <span style={{ fontSize: '0.78rem', color: '#16a34a', fontWeight: 400 }}>· saved</span>}
             </h3>
-            <span style={{ ...mutedText, fontSize: '0.78rem' }}>Tap a card to select · use arrows to move</span>
+            <span style={{ ...mutedText, fontSize: '0.78rem' }}>Tap to select · glide or use arrows · tap again or outside to deselect</span>
           </div>
 
           <div ref={listRef} style={{ display: 'grid', gap: '0.5rem' }}>
@@ -247,7 +280,10 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
                   onTouchStart={e => onTouchStart(e, index)}
                   onTouchMove={onTouchMove}
                   onTouchEnd={onTouchEnd}
-                  onClick={() => setSelected(isSelected ? null : index)}
+                  onClick={() => {
+                      if (skipNextClick.current) { skipNextClick.current = false; return; }
+                      setSelected(isSelected ? null : index);
+                    }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -261,7 +297,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
                     userSelect: 'none',
                     cursor: 'pointer',
                     boxShadow: isSelected ? '0 0 0 3px rgba(245,158,11,0.25)' : isOver ? '0 2px 8px rgba(251,146,60,0.2)' : 'none',
-                    touchAction: 'none',
+                    touchAction: isSelected ? 'none' : 'pan-y',
                   }}
                 >
                   {/* rank badge */}
@@ -281,7 +317,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
                       {getDisplayName(player)}{isMe ? ' 👤' : ''}
                     </strong>
                     {isSelected && (
-                      <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>selected · use arrows →</span>
+                      <span style={{ fontSize: '0.72rem', color: '#d97706', fontWeight: 600 }}>selected · glide to reorder or use arrows →</span>
                     )}
                   </div>
 
