@@ -63,11 +63,13 @@ function LeagueList({ title, leagues, user, emptyMessage, onOpenLeague, onJoinLe
         {leagues.map(league => {
           const member = isLeagueMember(league, user);
           const preStart = ['draft', 'ranking', 'ranked'].includes(league.status);
-          const hasRanked = !!league.stackRanks?.[user.id];
-          const needsRanking = member && preStart && !hasRanked;
+          const totalPlayers = league.players.length;
+          const rankedCount = preStart
+            ? league.players.filter(p => (league.stackRanks?.[p.id]?.length ?? 0) > 0).length
+            : 0;
           const playerPreview = league.players.slice(0, 4).map(player => getDisplayName(player)).join(', ');
           return (
-            <div key={league.id} style={{ border: `1px solid ${needsRanking ? '#f59e0b' : '#fed7aa'}`, borderRadius: '0.9rem', padding: '1rem', background: needsRanking ? '#fffbeb' : '#fff', display: 'grid', gap: '0.8rem' }}>
+            <div key={league.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '1rem', background: '#fff', display: 'grid', gap: '0.8rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
@@ -79,24 +81,19 @@ function LeagueList({ title, leagues, user, emptyMessage, onOpenLeague, onJoinLe
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <CopyLeagueLink leagueId={league.id} />
-                  <button style={needsRanking ? S.smallBtn : S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>
-                    {needsRanking ? '📋 Rank now' : (member && preStart ? '📋 Update ranking' : 'Open')}
-                  </button>
+                  <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
                   {!member && league.status === 'draft' && onJoinLeague && (
                     <button style={S.smallBtn} disabled={joiningLeagueId === league.id} onClick={() => onJoinLeague(league)}>
                       {joiningLeagueId === league.id ? 'Joining…' : 'Join'}
                     </button>
                   )}
                   {member && !preStart && <span style={{ ...statusPill('active'), textTransform: 'none' }}>Joined</span>}
-                  {member && preStart && (
-                    <span style={{ fontSize: '0.78rem', fontWeight: 600, color: needsRanking ? '#92400e' : '#16a34a', background: needsRanking ? '#fef3c7' : '#dcfce7', borderRadius: '0.4rem', padding: '0.2rem 0.5rem' }}>
-                      {needsRanking ? '⚠ Ranking pending' : '✓ Ranking submitted'}
-                    </span>
-                  )}
                 </div>
               </div>
               <div style={{ display: 'grid', gap: '0.25rem' }}>
-                <span style={{ color: '#78350f', fontWeight: 600, fontSize: '0.88rem' }}>Players ({league.players.length})</span>
+                <span style={{ color: '#78350f', fontWeight: 600, fontSize: '0.88rem' }}>
+                  Players ({totalPlayers}){preStart && totalPlayers > 0 ? ` · ${rankedCount}/${totalPlayers} ranked` : ''}
+                </span>
                 <span style={{ color: '#6b7280', fontSize: '0.92rem' }}>{playerPreview || 'No players yet.'}</span>
               </div>
             </div>
