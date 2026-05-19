@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -284,7 +284,9 @@ function LeagueCard({
   const handleProgress = () => {
     const key = `progress-${league.id}`;
     act(key, async () => {
-      if (league.status === 'ranking') {
+      if (league.status === 'draft') {
+        const r = await startRanking(league.id, user.phone); return r.league;
+      } else if (league.status === 'ranking') {
         const r = await finalizeRanking(league.id, user.phone); return r.league;
       }
       const r = await startLeague(league.id, user.phone); return r.league;
@@ -343,6 +345,11 @@ function LeagueCard({
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
+          {league.status === 'draft' && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
+              Start ranking
+            </button>
+          )}
           {league.status === 'ranking' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Finalize ranking
