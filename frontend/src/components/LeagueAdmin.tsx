@@ -289,11 +289,11 @@ function LeagueCard({
       const n = league.stackRanks?.[p.id]?.length ?? 0;
       return n > 0 && n < total;
     });
-    const lines: string[] = [`📋 ${league.name} — ranking reminder (${total} players)`];
-    if (none.length) lines.push(`❌ Not started: ${none.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
-    if (partial.length) lines.push(`⚠️ Partial: ${partial.map(p => `${p.firstName} ${p.lastName} (${league.stackRanks![p.id].length}/${total})`).join(', ')}`);
+    const lines: string[] = [`📋 ${league.name} — ranking needed`];
+    if (none.length) lines.push(`Please submit: ${none.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
+    if (partial.length) lines.push(`Please re-rank (new players joined): ${partial.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
     if (!none.length && !partial.length) lines.push('✅ Everyone has submitted!');
-    else lines.push('Please submit your ranking asap 🙏');
+    else lines.push('Please close out your ranking asap 🙏');
     const text = lines.join('\n');
     navigator.clipboard.writeText(text).catch(() => {
       const ta = document.createElement('textarea');
