@@ -41,6 +41,33 @@ export function useCopyLink() {
   return { copy, copiedUrl };
 }
 
+// ── Auto-update detector ────────────────────────────────────────────
+// Every 15 seconds, fetch index.html and compare the main JS bundle
+// filename (which is content-hashed). If a new build is detected, reload.
+function useAutoUpdate(intervalMs = 15000) {
+  useEffect(() => {
+    // Capture the currently loaded main bundle src
+    const currentScript = document.querySelector<HTMLScriptElement>('script[src*="/static/js/main."]');
+    const currentSrc = currentScript?.src ?? '';
+
+    const check = async () => {
+      try {
+        const res = await fetch('/', { cache: 'no-store' });
+        const html = await res.text();
+        const match = html.match(/\/static\/js\/main\.[^"]+\.js/);
+        if (match && currentSrc && !currentSrc.includes(match[0])) {
+          window.location.reload();
+        }
+      } catch {
+        // network error — ignore, try again next tick
+      }
+    };
+
+    const id = setInterval(check, intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+}
+
 // ── Tab bar ────────────────────────────────────────────────────────
 function TabBar({ tabs, active, onChange }: {
   tabs: { id: Tab; label: string; emoji: string }[];
@@ -79,6 +106,7 @@ function TabBar({ tabs, active, onChange }: {
 const SESSION_KEY = 'ladder_league_user';
 
 function App() {
+  useAutoUpdate();
   const [user, setUser] = useState<User | null>(() => {
     try {
       const stored = localStorage.getItem(SESSION_KEY);
