@@ -363,15 +363,19 @@ def compute_final_ranking(league: dict) -> list:
     Average position: each player's submitted ranking contributes positional scores.
     Lower average position = higher final rank.
     Players not ranked by a voter are placed last.
+    Only votes from players currently in the league are counted (stale votes ignored).
     """
     player_ids = [p["id"] for p in league.get("players", [])]
+    player_id_set = set(player_ids)
     n = len(player_ids)
     submissions = league.get("stackRanks", {})  # { userId: [playerId, ...] }
 
     scores: dict = {pid: 0.0 for pid in player_ids}
     voters = 0
 
-    for _, ranked_list in submissions.items():
+    for voter_id, ranked_list in submissions.items():
+        if voter_id not in player_id_set:  # skip stale votes from removed players
+            continue
         voters += 1
         # Assign position score (1 = best). Unranked players get n+1.
         positions = {pid: (ranked_list.index(pid) + 1) if pid in ranked_list else n + 1

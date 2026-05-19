@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -402,6 +402,21 @@ function LeagueCard({
               onClick={handleCopyReminder}
             >
               {copied ? '✓ Copied!' : '📋 Copy reminder'}
+            </button>
+          )}
+          {['draft', 'ranking', 'ranked'].includes(league.status) && (
+            <button
+              style={S.smallOutlineBtn}
+              disabled={!!busyId}
+              title="Recalculate finalRanking from all submitted votes using average position"
+              onClick={() => act(`recalc-${league.id}`, async () => {
+                const r = await recalculateRanking(league.id, user.phone);
+                if (!r.success) throw new Error(r.message || 'Recalculate failed');
+                setMessage('✅ Rankings recalculated from votes.');
+                return r.league;
+              })}
+            >
+              {busyId === `recalc-${league.id}` ? '⏳ Recalculating…' : '📊 Recalculate rankings'}
             </button>
           )}
           {league.status === 'ranked' && (

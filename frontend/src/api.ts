@@ -334,6 +334,10 @@ export function finalizeRanking(id: string, phone: string, rankedIds?: string[])
   return post(`/api/leagues/${encodeURIComponent(id)}/finalize-ranking`, rankedIds ? { phone, rankedIds } : { phone });
 }
 
+export function recalculateRanking(id: string, phone: string): Promise<{ success: boolean; league: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(id)}/recalculate-ranking`, { phone });
+}
+
 export function startLeague(id: string, phone: string): Promise<{ success: boolean; league: League }> {
   return post(`/api/leagues/${encodeURIComponent(id)}/start`, { phone });
 }

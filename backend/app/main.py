@@ -652,7 +652,8 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
         lg["status"] = "ranked"
 
     save_league(lg)
-    submitted_count = len(lg["stackRanks"])
+    # Count only current players who have submitted (exclude stale votes from removed players)
+    submitted_count = sum(1 for p in lg["players"] if p["id"] in lg["stackRanks"])
     total = len(lg["players"])
     return {"success": True, "league": lg,
             "submitted": submitted_count, "total": total, "allDone": all_submitted}
@@ -673,6 +674,22 @@ def api_finalize_ranking(league_id: str, data: dict = Body(...)):
 
     lg["finalRanking"] = manual_order if manual_order else compute_final_ranking(lg)
     lg["status"] = "ranked"
+    save_league(lg)
+    return {"success": True, "league": lg}
+
+
+@app.post("/api/leagues/{league_id}/recalculate-ranking")
+def api_recalculate_ranking(league_id: str, data: dict = Body(...)):
+    """Recalculate finalRanking from current votes using average position (admin action)."""
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+
+    lg["finalRanking"] = compute_final_ranking(lg)
     save_league(lg)
     return {"success": True, "league": lg}
 
