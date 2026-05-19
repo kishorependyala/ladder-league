@@ -1464,6 +1464,7 @@ def api_fix_player_ids(data: dict = Body(...)):
     return {"success": True, "fixed": fixed}
 
 
+@app.get("/api/admin/config")
 def api_admin_config(phone: str = Query(...)):
 
     if not is_super_admin(phone):
