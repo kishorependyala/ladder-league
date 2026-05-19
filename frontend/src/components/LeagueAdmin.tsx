@@ -37,8 +37,25 @@ function currentBlockIndex(blocks: LeagueBlock[]): number {
 
 // ── ScheduleEditor ────────────────────────────────────────────────────────────
 function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user: User; onLeagueUpdate: (l: League) => void }) {
-  const defaultBlocks = (): LeagueBlock[] => league.blocks ?? [];
-  const [blocks, setBlocks] = useState<LeagueBlock[]>(defaultBlocks);
+  const blockDurationDays = league.rules?.blockDurationDays ?? 7;
+  const numBlocks = league.rules?.numBlocks ?? 8;
+
+  const buildDefaultBlocks = (): LeagueBlock[] => {
+    if (league.blocks?.length) return league.blocks;
+    // Auto-generate weekly blocks from league start date (or today)
+    const start = league.startDate ?? new Date().toISOString().slice(0, 10);
+    return Array.from({ length: numBlocks }, (_, i) => {
+      const startMs = new Date(start).getTime() + i * blockDurationDays * 86400000;
+      const endMs = startMs + blockDurationDays * 86400000;
+      return {
+        index: i,
+        startDate: new Date(startMs).toISOString().slice(0, 10),
+        endDate: new Date(endMs).toISOString().slice(0, 10),
+      };
+    });
+  };
+
+  const [blocks, setBlocks] = useState<LeagueBlock[]>(buildDefaultBlocks);
   const [editIdx, setEditIdx] = useState<number | null>(null);
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
@@ -47,7 +64,7 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
   const [message, setMessage] = useState('');
 
   // keep in sync when league prop changes
-  useEffect(() => { setBlocks(league.blocks ?? []); }, [league.blocks]);
+  useEffect(() => { setBlocks(league.blocks?.length ? league.blocks : buildDefaultBlocks()); }, [league.blocks, league.startDate]);
 
   const todayIso = new Date().toISOString().slice(0, 10);
   const curIdx = currentBlockIndex(blocks);
@@ -75,9 +92,8 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
 
   const addBlock = () => {
     const last = blocks[blocks.length - 1];
-    const start = last ? last.endDate : todayIso;
-    const blockDays = (league.rules?.blockDurationDays ?? 7);
-    const endDate = new Date(new Date(start).getTime() + blockDays * 86400000).toISOString().slice(0, 10);
+    const start = last ? last.endDate : (league.startDate ?? todayIso);
+    const endDate = new Date(new Date(start).getTime() + blockDurationDays * 86400000).toISOString().slice(0, 10);
     setBlocks(prev => [...prev, { index: prev.length, startDate: start, endDate: endDate }]);
   };
 
@@ -99,9 +115,9 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
         <p style={{ ...mutedText, margin: 0, fontSize: '0.82rem' }}>
-          Each block is a play window. Default duration: <strong>{league.rules?.blockDurationDays ?? 7} days</strong>. Edit any block's dates below.
+          Each round is a play window. Default: <strong>{blockDurationDays}-day rounds</strong> (weekly). Edit dates or add/remove rounds below.
         </p>
-        <button style={{ ...S.smallBtn, fontSize: '0.78rem', padding: '0.25rem 0.65rem' }} onClick={addBlock}>+ Add block</button>
+        <button style={{ ...S.smallBtn, fontSize: '0.78rem', padding: '0.25rem 0.65rem' }} onClick={addBlock}>+ Add round</button>
       </div>
 
       {error && <div style={S.errorBox}>{error}</div>}
@@ -126,7 +142,7 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
               {isEditing ? (
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f', minWidth: 56 }}>Block {i + 1}</span>
+                    <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#78350f', minWidth: 56 }}>Round {i + 1}</span>
                     <label style={{ fontSize: '0.78rem', color: '#6b7280' }}>Start</label>
                     <input type="date" value={editStart} onChange={e => setEditStart(e.target.value)}
                       style={{ ...S.inp, padding: '0.3rem 0.5rem', fontSize: '0.85rem', width: 'auto' }} />
@@ -141,7 +157,7 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem', minWidth: 56 }}>Block {i + 1}</span>
+                  <span style={{ fontWeight: 700, color: '#78350f', fontSize: '0.85rem', minWidth: 56 }}>Round {i + 1}</span>
                   {isCurrent && <span style={{ fontSize: '0.7rem', background: '#fef3c7', color: '#92400e', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontWeight: 700 }}>▶ Current</span>}
                   {isPast && !isCurrent && <span style={{ fontSize: '0.7rem', background: '#f3f4f6', color: '#9ca3af', borderRadius: '0.3rem', padding: '0.1rem 0.4rem' }}>Done</span>}
                   {isFuture && <span style={{ fontSize: '0.7rem', background: '#eff6ff', color: '#3b82f6', borderRadius: '0.3rem', padding: '0.1rem 0.4rem' }}>Upcoming</span>}
@@ -163,11 +179,11 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
         {blocks.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '0.65rem', border: '1.5px dashed #a78bfa', background: '#faf5ff', opacity: 0.9 }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#7c3aed' }}>🏆 Playoffs / Knockout</span>
-            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>starts after Block {blocks.length} ({fmtDate(blocks[blocks.length - 1].endDate)})</span>
+            <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>starts after Round {blocks.length} ({fmtDate(blocks[blocks.length - 1].endDate)})</span>
           </div>
         )}
         {blocks.length === 0 && (
-          <p style={mutedText}>No blocks yet. Click "+ Add block" to create the schedule.</p>
+          <p style={mutedText}>No rounds yet. Click "+ Add round" to create the schedule.</p>
         )}
       </div>
 
@@ -410,7 +426,7 @@ function LeagueCard({
 
       {/* tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>
-        {((['players', 'rules', ...(['active','playoffs','completed'].includes(league.status) ? ['schedule'] : [])] as const)).map(t => (
+        {(['players', 'rules', 'schedule'] as const).map(t => (
           <button
             key={t}
             onClick={() => setActiveTab(t as 'players' | 'rules' | 'schedule')}
@@ -426,7 +442,7 @@ function LeagueCard({
               cursor: 'pointer',
             }}
           >
-            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : '📅 Schedule'}
+            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : '📅 Rounds'}
           </button>
         ))}
       </div>
