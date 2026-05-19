@@ -292,11 +292,51 @@ def api_update_user(user_id: str, data: dict = Body(...)):
     user = get_user_by_id(user_id)
     if not user:
         return {"success": False, "message": "User not found"}
+    changed_name = False
     for field in ("firstName", "lastName", "email", "favoriteSport"):
         if field in data:
-            user[field] = data[field].strip() if isinstance(data[field], str) else data[field]
+            new_val = data[field].strip() if isinstance(data[field], str) else data[field]
+            if field in ("firstName", "lastName") and user.get(field) != new_val:
+                changed_name = True
+            user[field] = new_val
     save_user(user)
+    # Propagate name changes into every league where this player appears
+    if changed_name:
+        _sync_player_name_in_leagues(user)
     return {"success": True, "user": user}
+
+
+def _sync_player_name_in_leagues(user: dict) -> int:
+    """Update firstName/lastName for this user in all leagues. Returns count of leagues updated."""
+    uid = user["id"]
+    first = user.get("firstName", "")
+    last = user.get("lastName", "")
+    updated = 0
+    for league in list_leagues():
+        dirty = False
+        for p in league.get("players", []):
+            if p.get("id") == uid or normalize_phone(p.get("phone", "")) == normalize_phone(user.get("phone", "")):
+                if p.get("firstName") != first or p.get("lastName") != last:
+                    p["firstName"] = first
+                    p["lastName"] = last
+                    dirty = True
+        if dirty:
+            save_league(league)
+            updated += 1
+    return updated
+
+
+@app.post("/api/admin/sync-player-names")
+def api_sync_player_names(data: dict = Body(...)):
+    """Super-admin: propagate all user names into every league that has stale copies."""
+    phone = data.get("phone")
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Super admin only"}
+    users = load_users()
+    total_leagues = 0
+    for user in users:
+        total_leagues += _sync_player_name_in_leagues(user)
+    return {"success": True, "leaguesUpdated": total_leagues, "usersProcessed": len(users)}
 
 
 @app.post("/api/join-league")

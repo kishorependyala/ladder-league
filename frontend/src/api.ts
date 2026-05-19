@@ -470,6 +470,10 @@ export function updateUserProfile(
   });
 }
 
+export function syncPlayerNames(adminPhone: string): Promise<{ success: boolean; leaguesUpdated: number; usersProcessed: number; message?: string }> {
+  return post('/api/admin/sync-player-names', { phone: adminPhone });
+}
+
 // ── Data browser & App config (super-admin) ────────────────────────────────
 
 export interface DataEntry {

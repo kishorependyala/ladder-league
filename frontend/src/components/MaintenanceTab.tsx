@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { auditData, fixPlayerIds, migrateLeagueIds, type DataIssue } from '../api';
+import { auditData, fixPlayerIds, migrateLeagueIds, syncPlayerNames, type DataIssue } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type Props = { phone: string };
@@ -22,6 +22,10 @@ export default function MaintenanceTab({ phone }: Props) {
   const [running, setRunning] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, unknown>>({});
   const [fixError, setFixError] = useState('');
+
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ leaguesUpdated: number; usersProcessed: number } | null>(null);
+  const [syncError, setSyncError] = useState('');
 
   const runAudit = async () => {
     setAuditing(true); setAuditError(''); setIssues(null); setResults({});
@@ -48,6 +52,16 @@ export default function MaintenanceTab({ phone }: Props) {
     setRunning(null);
   };
 
+  const runSyncNames = async () => {
+    setSyncBusy(true); setSyncError(''); setSyncResult(null);
+    try {
+      const res = await syncPlayerNames(phone);
+      if (res.success) setSyncResult({ leaguesUpdated: res.leaguesUpdated, usersProcessed: res.usersProcessed });
+      else setSyncError(res.message || 'Sync failed.');
+    } catch (e) { setSyncError(e instanceof Error ? e.message : 'Error'); }
+    setSyncBusy(false);
+  };
+
   // Group issues by fix type
   const byFix = (issues ?? []).reduce<Record<string, DataIssue[]>>((acc, issue) => {
     const key = issue.fix ?? '__none__';
@@ -72,6 +86,29 @@ export default function MaintenanceTab({ phone }: Props) {
         {auditError && <div style={S.errorBox}>{auditError}</div>}
         {issues !== null && issues.length === 0 && (
           <div style={S.successBox}>✅ No issues found — data looks clean!</div>
+        )}
+      </div>
+
+      {/* Sync player names card */}
+      <div style={{ ...S.card, display: 'grid', gap: '0.75rem' }}>
+        <div>
+          <h3 style={{ ...subheading, margin: 0 }}>👤 Sync player names in leagues</h3>
+          <p style={{ ...mutedText, marginTop: '0.3rem', fontSize: '0.83rem' }}>
+            League JSON files store a copy of each player's name. Run this if names were updated and old copies remain stale.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.smallBtn} disabled={syncBusy} onClick={runSyncNames}>
+            {syncBusy ? '⏳ Syncing…' : '🔄 Sync player names'}
+          </button>
+        </div>
+        {syncError && <div style={S.errorBox}>{syncError}</div>}
+        {syncResult && (
+          <div style={S.successBox}>
+            ✅ Done — checked <strong>{syncResult.usersProcessed}</strong> users,
+            updated names in <strong>{syncResult.leaguesUpdated}</strong> league{syncResult.leaguesUpdated !== 1 ? 's' : ''}.
+            {syncResult.leaguesUpdated === 0 && ' All names were already in sync.'}
+          </div>
         )}
       </div>
 
