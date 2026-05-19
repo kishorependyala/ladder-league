@@ -24,6 +24,112 @@ type MatchResultCard = {
   loserLog?: MatchLogEntry;
 };
 
+function CoinFlipModal({ players, onClose }: { players: { id: string; firstName: string; lastName: string }[]; onClose: () => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [result, setResult] = useState<string | null>(null);
+  const [spinning, setSpinning] = useState(false);
+
+  const toggle = (id: string) => {
+    setResult(null);
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const flip = () => {
+    if (selected.length < 2) return;
+    setSpinning(true);
+    setResult(null);
+    const rounds = 12 + Math.floor(Math.random() * 8);
+    let i = 0;
+    const tick = () => {
+      const pick = selected[Math.floor(Math.random() * selected.length)];
+      setResult(pick);
+      i++;
+      if (i < rounds) {
+        setTimeout(tick, 80 + Math.min(i * 18, 320));
+      } else {
+        const winner = selected[Math.floor(Math.random() * selected.length)];
+        setResult(winner);
+        setSpinning(false);
+      }
+    };
+    tick();
+  };
+
+  const winnerName = result ? players.find(p => p.id === result) : null;
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: '#fff', borderRadius: '1.2rem', padding: '1.5rem', maxWidth: 380, width: '100%', display: 'grid', gap: '1rem', boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#78350f' }}>🪙 Coin Flip</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.3rem', cursor: 'pointer', color: '#6b7280' }}>✕</button>
+        </div>
+        <p style={{ margin: 0, fontSize: '0.88rem', color: '#6b7280' }}>Pick 2 or more opponents, then flip!</p>
+
+        <div style={{ display: 'grid', gap: '0.45rem', maxHeight: 220, overflowY: 'auto' }}>
+          {players.map(p => {
+            const isOn = selected.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => toggle(p.id)}
+                style={{
+                  textAlign: 'left', padding: '0.55rem 0.9rem', borderRadius: '0.65rem', border: isOn ? '2px solid #f59e0b' : '1.5px solid #e5e7eb',
+                  background: isOn ? '#fef3c7' : '#f9fafb', cursor: 'pointer', fontWeight: isOn ? 700 : 500,
+                  color: isOn ? '#92400e' : '#374151', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '0.5rem',
+                }}
+              >
+                <span style={{ fontSize: '0.85rem' }}>{isOn ? '✅' : '⬜'}</span>
+                {p.firstName} {p.lastName}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={flip}
+          disabled={selected.length < 2 || spinning}
+          style={{
+            padding: '0.7rem 1rem', borderRadius: '0.75rem', border: 'none', fontWeight: 700, fontSize: '1rem', cursor: selected.length < 2 || spinning ? 'not-allowed' : 'pointer',
+            background: selected.length >= 2 && !spinning ? '#f59e0b' : '#e5e7eb', color: selected.length >= 2 && !spinning ? '#fff' : '#9ca3af',
+            transition: 'background 0.2s',
+          }}
+        >
+          {spinning ? '🪙 Flipping…' : '🪙 Flip Coin'}
+        </button>
+
+        {result && (
+          <div style={{
+            textAlign: 'center', padding: '1rem', borderRadius: '0.9rem',
+            background: spinning ? '#f3f4f6' : '#fef3c7', border: spinning ? '2px solid #e5e7eb' : '2px solid #f59e0b',
+            transition: 'all 0.15s',
+          }}>
+            {spinning ? (
+              <span style={{ fontSize: '1.1rem', color: '#6b7280', fontWeight: 600 }}>
+                {players.find(p => p.id === result)?.firstName} {players.find(p => p.id === result)?.lastName}
+              </span>
+            ) : (
+              <>
+                <div style={{ fontSize: '2rem' }}>🎉</div>
+                <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#78350f', marginTop: '0.3rem' }}>
+                  {winnerName?.firstName} {winnerName?.lastName}
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#92400e', marginTop: '0.2rem' }}>wins the coin flip!</div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [currentLeague, setCurrentLeague] = useState(league);
   const [standings, setStandings] = useState<StandingsRow[]>([]);
@@ -31,6 +137,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
   const [showSubmitMatch, setShowSubmitMatch] = useState(false);
+  const [showCoinFlip, setShowCoinFlip] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -157,9 +264,18 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={statusPill(currentLeague.status)}>{currentLeague.status}</span>
             {(currentLeague.status === 'active' || currentLeague.status === 'playoffs') && (
-              <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
-                ➕ Add Score
-              </button>
+              <>
+                <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
+                  ➕ Add Score
+                </button>
+                <button
+                  style={{ ...S.smallBtn, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', fontSize: '1.2rem', padding: '0.3rem 0.65rem' }}
+                  title="Coin flip"
+                  onClick={() => setShowCoinFlip(true)}
+                >
+                  🪙
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -377,6 +493,13 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           standings={standings}
           isAdmin={isAdmin}
           onRefresh={loadData}
+        />
+      )}
+
+      {showCoinFlip && (
+        <CoinFlipModal
+          players={currentLeague.players || []}
+          onClose={() => setShowCoinFlip(false)}
         />
       )}
 
