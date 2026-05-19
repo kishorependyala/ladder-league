@@ -314,6 +314,9 @@ function AuthFlow({ onAuth }: { onAuth: (user: User) => void }) {
           {backBtn('signup-sport')}
         </>)}
       </div>
+      <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#9ca3af', marginTop: '1rem' }}>
+        A product of <strong style={{ color: '#78350f' }}>TeaBreakTech</strong>
+      </p>
     </div>
   );
 }

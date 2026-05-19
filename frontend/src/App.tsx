@@ -265,6 +265,9 @@ function App() {
         )}
         {tabContent}
       </main>
+      <footer style={{ textAlign: 'center', padding: '1.25rem', fontSize: '0.78rem', color: '#9ca3af' }}>
+        A product of <strong style={{ color: '#78350f' }}>TeaBreakTech</strong>
+      </footer>
       {showProfile && user && (
         <UserProfile
           user={user}
