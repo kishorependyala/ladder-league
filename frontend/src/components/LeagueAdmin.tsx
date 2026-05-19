@@ -38,7 +38,7 @@ function currentBlockIndex(blocks: LeagueBlock[]): number {
 // ── ScheduleEditor ────────────────────────────────────────────────────────────
 function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user: User; onLeagueUpdate: (l: League) => void }) {
   const blockDurationDays = league.rules?.blockDurationDays ?? 7;
-  const numBlocks = league.rules?.numBlocks ?? 8;
+  const numBlocks = 8;
 
   const buildDefaultBlocks = (): LeagueBlock[] => {
     if (league.blocks?.length) return league.blocks;
