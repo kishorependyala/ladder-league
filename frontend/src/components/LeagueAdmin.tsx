@@ -197,6 +197,7 @@ function LeagueCard({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule'>('players');
+  const [copied, setCopied] = useState(false);
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(league.name);
@@ -281,6 +282,28 @@ function LeagueCard({
     setBusyId(null);
   };
 
+  const handleCopyReminder = () => {
+    const total = league.players.length;
+    const none = league.players.filter(p => !(league.stackRanks?.[p.id]?.length));
+    const partial = league.players.filter(p => {
+      const n = league.stackRanks?.[p.id]?.length ?? 0;
+      return n > 0 && n < total;
+    });
+    const lines: string[] = [`📋 ${league.name} — ranking reminder (${total} players)`];
+    if (none.length) lines.push(`❌ Not started: ${none.map(p => `${p.firstName} ${p.lastName}`).join(', ')}`);
+    if (partial.length) lines.push(`⚠️ Partial: ${partial.map(p => `${p.firstName} ${p.lastName} (${league.stackRanks![p.id].length}/${total})`).join(', ')}`);
+    if (!none.length && !partial.length) lines.push('✅ Everyone has submitted!');
+    else lines.push('Please submit your ranking asap 🙏');
+    const text = lines.join('\n');
+    navigator.clipboard.writeText(text).catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    });
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleProgress = () => {
     const key = `progress-${league.id}`;
     act(key, async () => {
@@ -353,6 +376,14 @@ function LeagueCard({
           {league.status === 'ranking' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Finalize ranking
+            </button>
+          )}
+          {league.status === 'ranking' && (
+            <button
+              style={{ ...S.smallOutlineBtn, color: copied ? '#16a34a' : undefined, borderColor: copied ? '#86efac' : undefined }}
+              onClick={handleCopyReminder}
+            >
+              {copied ? '✓ Copied!' : '📋 Copy reminder'}
             </button>
           )}
           {league.status === 'ranked' && (
