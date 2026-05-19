@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
+import { addAdmin, addPlayer, getAllUsers, getDisplayName, removePlayer, renameLeague, startLeague, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -284,13 +284,7 @@ function LeagueCard({
   const handleProgress = () => {
     const key = `progress-${league.id}`;
     act(key, async () => {
-      if (league.status === 'draft') {
-        const r = await startRanking(league.id, user.phone); return r.league;
-      } else if (league.status === 'ranking') {
-        const r = await finalizeRanking(league.id, user.phone); return r.league;
-      } else {
-        const r = await startLeague(league.id, user.phone); return r.league;
-      }
+      const r = await startLeague(league.id, user.phone); return r.league;
     });
   };
 
@@ -346,9 +340,9 @@ function LeagueCard({
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
-          {['draft', 'ranking', 'ranked'].includes(league.status) && (
+          {league.status === 'ranked' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
-              {league.status === 'draft' ? 'Start ranking' : league.status === 'ranking' ? 'Finalize ranking' : 'Start league'}
+              Start league
             </button>
           )}
         </div>
@@ -392,25 +386,15 @@ function LeagueCard({
                     const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
                     const total = league.players.length;
                     const rankedCount = league.stackRanks?.[p.id]?.length ?? 0;
-                    const showRanking = league.status === 'ranking' || league.status === 'ranked';
-                    const allRanked = rankedCount === total;
                     return (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
                         <span style={{ flex: 1, color: '#78350f', fontWeight: 500, fontSize: '0.92rem' }}>
                           {p.firstName} {p.lastName}
                           {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>admin</span>}
                         </span>
-                        {showRanking && (
-                          <span style={{
-                            fontSize: '0.78rem', fontWeight: 700,
-                            color: allRanked ? '#15803d' : rankedCount > 0 ? '#d97706' : '#6b7280',
-                            background: allRanked ? '#dcfce7' : rankedCount > 0 ? '#fef3c7' : '#f3f4f6',
-                            border: `1px solid ${allRanked ? '#86efac' : rankedCount > 0 ? '#fde68a' : '#e5e7eb'}`,
-                            borderRadius: '0.35rem', padding: '0.18rem 0.5rem', whiteSpace: 'nowrap' as const,
-                          }}>
-                            {rankedCount}/{total} ranked
-                          </span>
-                        )}
+                        <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                          {rankedCount}/{total} ranked
+                        </span>
                         <span style={{ ...mutedText, fontSize: '0.8rem' }}>{p.phone}</span>
                         {!isAdmin && (
                           <button style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.2rem 0.5rem' }} disabled={busy} onClick={() => handleMakeAdmin(p)}>
