@@ -30,6 +30,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [matches, setMatches] = useState<Match[]>([]);
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
+  const [showSubmitMatch, setShowSubmitMatch] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [startingPlayoffs, setStartingPlayoffs] = useState(false);
@@ -172,6 +173,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           </div>
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={statusPill(currentLeague.status)}>{currentLeague.status}</span>
+            {(currentLeague.status === 'active' || currentLeague.status === 'playoffs') && (
+              <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
+                ➕ Add Score
+              </button>
+            )}
             {currentLeague.status === 'active' && isAdmin && (
               <button style={S.smallBtn} onClick={handleStartPlayoffs} disabled={startingPlayoffs || loading}>
                 {startingPlayoffs ? 'Starting…' : '🏆 Start Playoffs'}
@@ -396,7 +402,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         />
       )}
 
-      {activeEnterPair && (
+      {(activeEnterPair || showSubmitMatch) && (
         <div
           style={{
             position: 'fixed',
@@ -408,17 +414,18 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             justifyContent: 'center',
             padding: '1rem',
           }}
-          onClick={() => setActiveEnterPair(null)}
+          onClick={() => { setActiveEnterPair(null); setShowSubmitMatch(false); }}
         >
           <div style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
             <SubmitMatch
               league={currentLeague}
               user={user}
-              prePlayer1={activeEnterPair.p1}
-              prePlayer2={activeEnterPair.p2}
-              onCancel={() => setActiveEnterPair(null)}
+              prePlayer1={activeEnterPair?.p1}
+              prePlayer2={activeEnterPair?.p2}
+              onCancel={() => { setActiveEnterPair(null); setShowSubmitMatch(false); }}
               onSubmitted={() => {
                 setActiveEnterPair(null);
+                setShowSubmitMatch(false);
                 loadData();
               }}
             />
