@@ -387,99 +387,30 @@ function LeagueCard({
               ? <p style={mutedText}>No players yet.</p>
               : (
                 <div style={{ display: 'grid', gap: '0.4rem' }}>
-                  {/* Split into pending / ranked groups when in ranking phase */}
-                  {league.status === 'ranking' && (() => {
-                    const submitted = league.players.filter(p => !!league.stackRanks?.[p.id]).length;
-                    const total = league.players.length;
-                    const pct = total ? (submitted / total) * 100 : 0;
-                    const pending = league.players.filter(p => !league.stackRanks?.[p.id]);
-                    const ranked  = league.players.filter(p =>  !!league.stackRanks?.[p.id]);
-
-                    const playerRow = (p: Player, done: boolean) => {
-                      const isAdmin = adminSet.has(p.id);
-                      const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
-                      return (
-                        <div key={p.id} style={{
-                          display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
-                          padding: '0.5rem 0.75rem',
-                          borderRadius: '0.6rem',
-                          background: done ? '#f0fdf4' : '#fff7ed',
-                          border: `1.5px solid ${done ? '#86efac' : '#fdba74'}`,
-                          borderLeft: `5px solid ${done ? '#22c55e' : '#f97316'}`,
-                        }}>
-                          {/* status dot */}
-                          <div style={{ width: 10, height: 10, borderRadius: 999, background: done ? '#22c55e' : '#d1d5db', flexShrink: 0 }} />
-                          <span style={{ flex: 1, color: '#1f2937', fontWeight: 600, fontSize: '0.92rem' }}>
-                            {p.firstName} {p.lastName}
-                            {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.7rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.3rem' }}>admin</span>}
-                          </span>
-                          <span style={{ fontSize: '0.78rem', color: '#9ca3af' }}>{p.phone}</span>
-                          {!isAdmin && (
-                            <button style={{ ...S.smallOutlineBtn, fontSize: '0.72rem', padding: '0.18rem 0.45rem' }} disabled={busy} onClick={() => handleMakeAdmin(p)}>☆ Admin</button>
-                          )}
-                          <button style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.72rem', padding: '0.18rem 0.45rem' }} disabled={busy} onClick={() => handleRemovePlayer(p)}>
-                            {busyId === `remove-${p.id}` ? '…' : '✕'}
-                          </button>
-                        </div>
-                      );
-                    };
-
-                    return (
-                      <div style={{ display: 'grid', gap: '0.6rem' }}>
-                        {/* progress bar */}
-                        <div style={{ padding: '0.55rem 0.7rem', background: '#f9fafb', borderRadius: '0.65rem', border: '1px solid #e5e7eb' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.35rem', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#374151' }}>Ranking progress</span>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: submitted === total ? '#16a34a' : '#d97706' }}>
-                              {submitted} / {total} submitted
-                            </span>
-                          </div>
-                          <div style={{ height: 10, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, background: submitted === total ? '#16a34a' : '#22c55e', borderRadius: 999, transition: 'width 0.4s ease' }} />
-                          </div>
-                        </div>
-
-                        {/* Pending section */}
-                        {pending.length > 0 && (
-                          <div style={{ display: 'grid', gap: '0.35rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <div style={{ flex: 1, height: 1, background: '#fed7aa' }} />
-                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#ea580c', background: '#fff7ed', border: '1px solid #fdba74', borderRadius: '99px', padding: '0.15rem 0.6rem', whiteSpace: 'nowrap' as const }}>
-                                ⏳ Hasn't ranked — {pending.length}
-                              </span>
-                              <div style={{ flex: 1, height: 1, background: '#fed7aa' }} />
-                            </div>
-                            {pending.map(p => playerRow(p, false))}
-                          </div>
-                        )}
-
-                        {/* Ranked section */}
-                        {ranked.length > 0 && (
-                          <div style={{ display: 'grid', gap: '0.35rem' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                              <div style={{ flex: 1, height: 1, background: '#bbf7d0' }} />
-                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803d', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '99px', padding: '0.15rem 0.6rem', whiteSpace: 'nowrap' as const }}>
-                                ✓ Ranked — {ranked.length}
-                              </span>
-                              <div style={{ flex: 1, height: 1, background: '#bbf7d0' }} />
-                            </div>
-                            {ranked.map(p => playerRow(p, true))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Normal player list when not in ranking phase */}
-                  {league.status !== 'ranking' && league.players.map(p => {
+                  {league.players.map(p => {
                     const isAdmin = adminSet.has(p.id);
                     const busy = busyId === `remove-${p.id}` || busyId === `admin-${p.id}`;
+                    const total = league.players.length;
+                    const rankedCount = league.stackRanks?.[p.id]?.length ?? 0;
+                    const showRanking = league.status === 'ranking' || league.status === 'ranked';
+                    const allRanked = rankedCount === total;
                     return (
                       <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.45rem 0.7rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
                         <span style={{ flex: 1, color: '#78350f', fontWeight: 500, fontSize: '0.92rem' }}>
                           {p.firstName} {p.lastName}
                           {isAdmin && <span style={{ marginLeft: '0.4rem', fontSize: '0.72rem', color: '#92400e', background: '#fef3c7', borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>admin</span>}
                         </span>
+                        {showRanking && (
+                          <span style={{
+                            fontSize: '0.78rem', fontWeight: 700,
+                            color: allRanked ? '#15803d' : rankedCount > 0 ? '#d97706' : '#6b7280',
+                            background: allRanked ? '#dcfce7' : rankedCount > 0 ? '#fef3c7' : '#f3f4f6',
+                            border: `1px solid ${allRanked ? '#86efac' : rankedCount > 0 ? '#fde68a' : '#e5e7eb'}`,
+                            borderRadius: '0.35rem', padding: '0.18rem 0.5rem', whiteSpace: 'nowrap' as const,
+                          }}>
+                            {rankedCount}/{total} ranked
+                          </span>
+                        )}
                         <span style={{ ...mutedText, fontSize: '0.8rem' }}>{p.phone}</span>
                         {!isAdmin && (
                           <button style={{ ...S.smallOutlineBtn, fontSize: '0.75rem', padding: '0.2rem 0.5rem' }} disabled={busy} onClick={() => handleMakeAdmin(p)}>
