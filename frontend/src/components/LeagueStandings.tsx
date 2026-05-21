@@ -5,6 +5,7 @@ import MatchGrid from './MatchGrid';
 import PendingMatches from './PendingMatches';
 import PlayoffBracket from './PlayoffBracket';
 import StandingBreakdown from './StandingBreakdown';
+import RoundsTab from './RoundsTab';
 import SubmitMatch from './SubmitMatch';
 import LeagueRulesSummary from './LeagueRulesSummary';
 
@@ -14,7 +15,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'schedule' | 'rules';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules';
 
 type MatchResultCard = {
   match: Match;
@@ -334,6 +335,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ['standings', '📊 Standings'],
             ['results', '🎯 Match Results'],
             ['breakdown', '📈 Standings Breakdown'],
+            ['rounds', '📅 Rounds'],
             ['schedule', '📋 Schedule & Pending'],
             ['rules', '📖 League Rules'],
           ] as [StandingsTab, string][]).map(([tab, label]) => (
@@ -437,6 +439,10 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
 
         {activeTab === 'breakdown' && (
           <StandingBreakdown league={currentLeague} user={user} />
+        )}
+
+        {activeTab === 'rounds' && (
+          <RoundsTab league={currentLeague} user={user} matches={matches} />
         )}
 
         {activeTab === 'schedule' && (

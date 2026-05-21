@@ -161,6 +161,8 @@ export interface Match {
   note?: string;
   createdAt?: string;
   submittedAt?: string;
+  resolvedAt?: string;
+  datePlayed?: string;
   adminSubmittedBy?: string;
   requiresBothAccept?: boolean;
   acceptedSides?: string[];
