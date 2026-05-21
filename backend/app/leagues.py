@@ -98,16 +98,18 @@ def _sports_dir() -> str:
     return os.path.join(_data_dir(), "sports")
 
 
+def _league_dir(sport: str, league_id: str) -> str:
+    return os.path.join(_sports_dir(), sport, "leagues", league_id)
+
+
 def _league_path(sport: str, league_id: str) -> str:
-    return os.path.join(_sports_dir(), sport, "leagues", f"{league_id}.json")
+    """League config lives at {leagueId}/league.json."""
+    return os.path.join(_league_dir(sport, league_id), "league.json")
 
 
-def _matches_dir(sport: str, league_id: str) -> str:
-    return os.path.join(_sports_dir(), sport, "leagues", league_id, "matches")
-
-
-def _match_path(sport: str, league_id: str, match_id: str) -> str:
-    return os.path.join(_matches_dir(sport, league_id), f"{match_id}.json")
+def _matches_path(sport: str, league_id: str) -> str:
+    """All matches for a league in a single {leagueId}/matches.json array."""
+    return os.path.join(_league_dir(sport, league_id), "matches.json")
 
 
 def _config_dir() -> str:
@@ -137,9 +139,18 @@ def next_league_id(sport: str) -> str:
 
 
 def next_match_id(sport: str, league_id: str) -> str:
-    mdir = _matches_dir(sport, league_id)
-    os.makedirs(mdir, exist_ok=True)
-    return _next_id(mdir)
+    """IDs are still timestamp-based; we just use the league dir for uniqueness."""
+    ldir = _league_dir(sport, league_id)
+    os.makedirs(ldir, exist_ok=True)
+    existing_matches = _load_matches_raw(sport, league_id)
+    today = datetime.now().strftime("%Y%m%d")
+    existing = [
+        m["id"][len(today): len(today) + 10]
+        for m in existing_matches
+        if m.get("id", "").startswith(today) and len(m.get("id", "")) == len(today) + 10
+    ]
+    seq = max((int(s) for s in existing if s.isdigit()), default=0) + 1
+    return f"{today}{seq:010d}"
 
 
 # ── League CRUD ────────────────────────────────────────────────────
@@ -154,16 +165,13 @@ def save_league(league: dict):
 
 
 def delete_league(league_id: str) -> bool:
-    """Delete a league file (and its matches folder) by ID. Returns True if found and deleted."""
+    """Delete a league folder (league.json + matches.json) by ID."""
     for sport in SPORTS:
-        path = _league_path(sport, league_id)
-        if os.path.exists(path):
-            os.remove(path)
-            # also remove matches subfolder if present
-            matches_dir = os.path.join(os.path.dirname(path), league_id)
-            if os.path.isdir(matches_dir):
-                import shutil
-                shutil.rmtree(matches_dir)
+        ldir = _league_dir(sport, league_id)
+        league_file = _league_path(sport, league_id)
+        if os.path.exists(league_file):
+            import shutil
+            shutil.rmtree(ldir)
             return True
     return False
 
@@ -192,44 +200,54 @@ def list_leagues(sport: Optional[str] = None) -> list:
         d = os.path.join(_sports_dir(), s, "leagues")
         if not os.path.exists(d):
             continue
-        for fname in sorted(os.listdir(d)):
-            if fname.endswith(".json"):
-                fpath = os.path.join(d, fname)
-                with open(fpath) as f:
+        for entry in sorted(os.listdir(d)):
+            league_file = os.path.join(d, entry, "league.json")
+            if os.path.isdir(os.path.join(d, entry)) and os.path.exists(league_file):
+                with open(league_file) as f:
                     leagues.append(json.load(f))
     return leagues
 
 
 # ── Match CRUD ─────────────────────────────────────────────────────
 
-def save_match(match: dict):
-    sport = match["sport"]
-    lid = match["leagueId"]
-    mid = match["id"]
-    path = _match_path(sport, lid, mid)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(match, f, indent=2)
-
-
-def get_match(sport: str, league_id: str, match_id: str) -> Optional[dict]:
-    path = _match_path(sport, league_id, match_id)
+def _load_matches_raw(sport: str, league_id: str) -> list:
+    path = _matches_path(sport, league_id)
     if not os.path.exists(path):
-        return None
+        return []
     with open(path) as f:
         return json.load(f)
 
 
+def _save_matches_raw(sport: str, league_id: str, matches: list):
+    path = _matches_path(sport, league_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(matches, f, indent=2)
+
+
+def save_match(match: dict):
+    """Upsert a match into the league's matches.json. Adds datePlayed if missing."""
+    if "datePlayed" not in match or not match["datePlayed"]:
+        match["datePlayed"] = (match.get("resolvedAt") or match.get("submittedAt") or
+                               datetime.now().isoformat())[:10]
+    sport = match["sport"]
+    lid = match["leagueId"]
+    matches = _load_matches_raw(sport, lid)
+    idx = next((i for i, m in enumerate(matches) if m["id"] == match["id"]), None)
+    if idx is not None:
+        matches[idx] = match
+    else:
+        matches.append(match)
+    _save_matches_raw(sport, lid, matches)
+
+
+def get_match(sport: str, league_id: str, match_id: str) -> Optional[dict]:
+    matches = _load_matches_raw(sport, league_id)
+    return next((m for m in matches if m["id"] == match_id), None)
+
+
 def list_matches(sport: str, league_id: str) -> list:
-    mdir = _matches_dir(sport, league_id)
-    if not os.path.exists(mdir):
-        return []
-    matches = []
-    for fname in sorted(os.listdir(mdir)):
-        if fname.endswith(".json"):
-            with open(os.path.join(mdir, fname)) as f:
-                matches.append(json.load(f))
-    return matches
+    return _load_matches_raw(sport, league_id)
 
 
 def get_pending_matches_for_user(user_id: str) -> list:
@@ -252,6 +270,67 @@ def get_pending_matches_for_user(user_id: str) -> list:
                 if m.get("opponentId") == user_id:
                     pending.append(m)
     return pending
+
+
+# ── Data migration ─────────────────────────────────────────────────
+
+def migrate_to_folder_layout(data_dir: str):
+    """
+    One-time migration: convert old flat-file layout to folder layout.
+
+    Old:  sports/{sport}/leagues/{leagueId}.json
+          sports/{sport}/leagues/{leagueId}/matches/{matchId}.json
+
+    New:  sports/{sport}/leagues/{leagueId}/league.json
+          sports/{sport}/leagues/{leagueId}/matches.json
+    """
+    import shutil
+    sports_root = os.path.join(data_dir, "sports")
+    if not os.path.exists(sports_root):
+        return
+
+    for sport in SPORTS:
+        leagues_dir = os.path.join(sports_root, sport, "leagues")
+        if not os.path.exists(leagues_dir):
+            continue
+
+        for entry in os.listdir(leagues_dir):
+            entry_path = os.path.join(leagues_dir, entry)
+
+            # ── Migrate flat {leagueId}.json → {leagueId}/league.json ──
+            if entry.endswith(".json") and os.path.isfile(entry_path):
+                league_id = entry[:-5]
+                new_dir = os.path.join(leagues_dir, league_id)
+                new_league_path = os.path.join(new_dir, "league.json")
+                os.makedirs(new_dir, exist_ok=True)
+                if not os.path.exists(new_league_path):
+                    shutil.move(entry_path, new_league_path)
+                    print(f"[MIGRATE] {sport}/{entry} → {league_id}/league.json")
+                else:
+                    os.remove(entry_path)  # already migrated, remove old flat file
+
+            # ── Migrate {leagueId}/matches/{matchId}.json → {leagueId}/matches.json ──
+            if os.path.isdir(entry_path):
+                league_id = entry
+                old_matches_dir = os.path.join(entry_path, "matches")
+                new_matches_path = os.path.join(entry_path, "matches.json")
+
+                if os.path.isdir(old_matches_dir) and not os.path.exists(new_matches_path):
+                    matches = []
+                    for mfile in sorted(os.listdir(old_matches_dir)):
+                        if mfile.endswith(".json"):
+                            with open(os.path.join(old_matches_dir, mfile)) as f:
+                                m = json.load(f)
+                            # Add datePlayed if missing
+                            if "datePlayed" not in m or not m["datePlayed"]:
+                                m["datePlayed"] = (
+                                    m.get("resolvedAt") or m.get("submittedAt") or ""
+                                )[:10]
+                            matches.append(m)
+                    with open(new_matches_path, "w") as f:
+                        json.dump(matches, f, indent=2)
+                    shutil.rmtree(old_matches_dir)
+                    print(f"[MIGRATE] {sport}/{league_id}/matches/ ({len(matches)} matches) → matches.json")
 
 
 # ── Super admin ────────────────────────────────────────────────────

@@ -203,11 +203,12 @@ from app.leagues import (
     save_league, get_league, get_league_by_id, list_leagues, delete_league,
     save_match, get_match, list_matches, get_pending_matches_for_user,
     is_super_admin, add_super_admin, load_superadmin_phones,
-    compute_final_ranking, migrate_legacy_leagues, default_rules,
-    compute_match_winner, generate_playoffs,
+    compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
+    default_rules, compute_match_winner, generate_playoffs,
 )
 
 migrate_legacy_leagues(DATA_DIR)
+migrate_to_folder_layout(DATA_DIR)
 
 def load_leagues():
     if not os.path.exists(LEAGUES_FILE):
