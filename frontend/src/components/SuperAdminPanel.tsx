@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, renameLeague, signup, type League, type RolesResponse, type Sport, type User } from '../api';
+import React, { useEffect, useMemo, useState } from 'react';
+import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, renameLeague, signup, SPORT_SCORING, type League, type RolesResponse, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 import DataBrowser from './DataBrowser';
@@ -554,13 +554,64 @@ type CreateLeagueTabProps = {
   onFail: (msg: string) => void;
 };
 
+function SectionBox({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.85rem', padding: '0.9rem 1rem', background: '#fafafa', display: 'grid', gap: '0.9rem' }}>
+      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function PillGroup<T extends string>({ options, value, onChange }: { options: { value: T; label: string; desc?: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+      {options.map(opt => (
+        <button key={opt.value} type="button" onClick={() => onChange(opt.value)}
+          title={opt.desc}
+          style={{ padding: '0.4rem 0.85rem', borderRadius: '99px', border: '2px solid', cursor: 'pointer',
+            borderColor: value === opt.value ? '#f59e0b' : '#e5e7eb',
+            background: value === opt.value ? '#fef3c7' : '#fff',
+            color: value === opt.value ? '#92400e' : '#6b7280',
+            fontWeight: value === opt.value ? 700 : 500, fontSize: '0.84rem' }}>
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function RadioGroup<T extends string>({ options, value, onChange }: { options: { value: T; icon: string; label: string; desc: string }[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'grid', gap: '0.4rem' }}>
+      {options.map(opt => (
+        <label key={opt.value} onClick={() => onChange(opt.value)}
+          style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.55rem 0.75rem', borderRadius: '0.6rem', cursor: 'pointer', transition: 'border-color 0.15s',
+            border: `2px solid ${value === opt.value ? '#f59e0b' : '#e5e7eb'}`,
+            background: value === opt.value ? '#fffbeb' : '#fff' }}>
+          <div style={{ marginTop: 3, width: 13, height: 13, borderRadius: '50%', flexShrink: 0,
+            border: `2px solid ${value === opt.value ? '#f59e0b' : '#d1d5db'}`,
+            background: value === opt.value ? '#f59e0b' : '#fff' }} />
+          <div>
+            <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{opt.icon} {opt.label}</span>
+            <span style={{ ...mutedText, fontSize: '0.76rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
+          </div>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagueTabProps) {
   const [name, setName] = useState('');
   const [sport, setSport] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [matchFormat, setMatchFormat] = useState<'adhoc' | 'round-robin'>('adhoc');
+  const [doublesMode, setDoublesMode] = useState<'none' | 'adhoc' | 'fixed_pairs'>('none');
+  const [scoringWin, setScoringWin] = useState(3);
+  const [scoringLoss, setScoringLoss] = useState(0);
+  const [scoringNoGame, setScoringNoGame] = useState(-1);
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(1);
   const [upsetBonus, setUpsetBonus] = useState(1);
   const [joinPolicy, setJoinPolicy] = useState<'admin_only' | 'draft_only' | 'until_ranked' | 'until_complete'>('draft_only');
@@ -569,29 +620,19 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [lateJoinCap, setLateJoinCap] = useState(5);
   const [busy, setBusy] = useState(false);
 
-  const pillStyle = (active: boolean) => ({
-    padding: '0.45rem 0.9rem',
-    borderRadius: '99px',
-    border: '2px solid',
-    borderColor: active ? '#f59e0b' : '#e5e7eb',
-    background: active ? '#fef3c7' : '#fff',
-    color: active ? '#92400e' : '#6b7280',
-    fontWeight: active ? 700 : 500,
-    fontSize: '0.85rem',
-    cursor: 'pointer',
-  } as const);
+  const sportScoring = SPORT_SCORING[sport];
 
-  const JP_OPTIONS = [
-    { value: 'admin_only' as const,     icon: '🔒', label: 'Admin only',           desc: 'Admin manually adds all players' },
-    { value: 'draft_only' as const,     icon: '📋', label: 'Draft phase only',     desc: 'Players can join during setup only (default)' },
-    { value: 'until_ranked' as const,   icon: '⏳', label: 'Until ranking closes', desc: 'Open during draft & ranking phases' },
-    { value: 'until_complete' as const, icon: '🟢', label: 'Always open',          desc: 'Open until the league is fully complete' },
+  const JP_OPTIONS: { value: 'admin_only' | 'draft_only' | 'until_ranked' | 'until_complete'; icon: string; label: string; desc: string }[] = [
+    { value: 'draft_only',     icon: '📋', label: 'Draft phase only',     desc: 'Players can join during setup only (default)' },
+    { value: 'admin_only',     icon: '🔒', label: 'Admin only',           desc: 'Admin manually adds all players' },
+    { value: 'until_ranked',   icon: '⏳', label: 'Until ranking closes', desc: 'Open during draft & ranking phases' },
+    { value: 'until_complete', icon: '🟢', label: 'Always open',          desc: 'Open until the league is fully complete' },
   ];
-  const RP_OPTIONS = [
-    { value: 'bottom' as const,      icon: '⬇️', label: 'Last place',      desc: 'Placed at the bottom (default)' },
-    { value: 'middle' as const,      icon: '↕️', label: 'Mid-table',       desc: 'Inserted in the middle of standings' },
-    { value: 'provisional' as const, icon: '🔖', label: 'Provisional mid', desc: 'Mid-table, marked provisional until enough matches played' },
-    { value: 'admin_set' as const,   icon: '✏️', label: 'Admin places',    desc: 'Left unranked until admin sets a position' },
+  const RP_OPTIONS: { value: 'bottom' | 'middle' | 'provisional' | 'admin_set'; icon: string; label: string; desc: string }[] = [
+    { value: 'bottom',      icon: '⬇️', label: 'Last place',      desc: 'Placed at the bottom (default)' },
+    { value: 'middle',      icon: '↕️', label: 'Mid-table',       desc: 'Inserted in the middle of standings' },
+    { value: 'provisional', icon: '🔖', label: 'Provisional mid', desc: 'Mid-table, marked provisional until enough matches played' },
+    { value: 'admin_set',   icon: '✏️', label: 'Admin places',    desc: 'Left unranked until admin sets a position' },
   ];
 
   const handleCreate = async () => {
@@ -600,6 +641,8 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
     try {
       const rules = {
         matchFormat,
+        doublesMode,
+        scoring: { win: scoringWin, loss: scoringLoss, noGame: scoringNoGame },
         minMatchesPerWeek,
         upsetBonus,
         joinPolicy,
@@ -608,146 +651,143 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       };
       const res = await createLeague(sessionUser.phone, name, sport, start, end, rules);
       onCreated(res.league);
-      setName('');
-      setSport('');
-      setStart('');
-      setEnd('');
-      setShowAdvanced(false);
-      setMatchFormat('adhoc');
-      setMinMatchesPerWeek(1);
-      setUpsetBonus(1);
-      setJoinPolicy('draft_only');
-      setRankPolicy('bottom');
+      setName(''); setSport(''); setStart(''); setEnd('');
+      setMatchFormat('adhoc'); setDoublesMode('none');
+      setScoringWin(3); setScoringLoss(0); setScoringNoGame(-1);
+      setMinMatchesPerWeek(1); setUpsetBonus(1);
+      setJoinPolicy('draft_only'); setRankPolicy('bottom');
       setUseLateJoinCap(false);
     } catch (e) { onFail(e instanceof Error ? e.message : 'Could not create league.'); }
     setBusy(false);
   };
 
   return (
-    <div style={{ ...S.card, display: 'grid', gap: '1rem', maxWidth: 520 }}>
+    <div style={{ display: 'grid', gap: '1rem', maxWidth: 560 }}>
       <h3 style={subheading}>➕ Create a new league</h3>
-      <input value={name} onChange={e => setName(e.target.value)} placeholder="League name" style={S.inp} />
-      <select value={sport} onChange={e => setSport(e.target.value)} style={{ ...S.inp, background: '#fff' }}>
-        <option value="">— Select sport —</option>
-        {sports.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-      </select>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <label style={{ display: 'grid', gap: '0.3rem' }}>
-          <span style={{ ...mutedText, fontSize: '0.8rem' }}>Start date</span>
-          <input type="date" value={start} onChange={e => setStart(e.target.value)} style={S.inp} />
-        </label>
-        <label style={{ display: 'grid', gap: '0.3rem' }}>
-          <span style={{ ...mutedText, fontSize: '0.8rem' }}>End date</span>
-          <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={S.inp} />
-        </label>
-      </div>
 
-      <div style={{ display: 'grid', gap: '0.75rem', border: '1px solid #fde68a', borderRadius: '0.85rem', padding: '0.9rem', background: '#fffbeb' }}>
-        <button
-          type="button"
-          style={{ ...S.smallOutlineBtn, justifySelf: 'start' }}
-          onClick={() => setShowAdvanced(value => !value)}
-        >
-          {showAdvanced ? '▾ Hide advanced rules' : '▸ Advanced rules'}
-        </button>
-
-        {showAdvanced && (
-          <div style={{ display: 'grid', gap: '1.1rem' }}>
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button type="button" onClick={() => setMatchFormat('adhoc')} style={pillStyle(matchFormat === 'adhoc')}>
-                  Ad-hoc (anyone vs anyone)
-                </button>
-                <button type="button" onClick={() => setMatchFormat('round-robin')} style={pillStyle(matchFormat === 'round-robin')}>
-                  Round-robin (all vs all)
-                </button>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week</label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {[1, 2, 3].map(value => (
-                  <button key={value} type="button" onClick={() => setMinMatchesPerWeek(value)} style={pillStyle(minMatchesPerWeek === value)}>
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus points</label>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                value={upsetBonus}
-                onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
-                style={{ ...S.inp, width: 96 }}
-              />
-            </div>
-
-            {/* Join policy */}
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🚪 When can players join?</label>
-              <div style={{ display: 'grid', gap: '0.4rem' }}>
-                {JP_OPTIONS.map(opt => (
-                  <label key={opt.value} onClick={() => setJoinPolicy(opt.value)}
-                    style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.6rem 0.75rem', borderRadius: '0.6rem',
-                      border: `2px solid ${joinPolicy === opt.value ? '#f59e0b' : '#e5e7eb'}`,
-                      background: joinPolicy === opt.value ? '#fffbeb' : '#fff', cursor: 'pointer', transition: 'border-color 0.15s' }}
-                  >
-                    <div style={{ marginTop: 2, width: 14, height: 14, borderRadius: '50%',
-                      border: `2px solid ${joinPolicy === opt.value ? '#f59e0b' : '#d1d5db'}`,
-                      background: joinPolicy === opt.value ? '#f59e0b' : '#fff', flexShrink: 0 }} />
-                    <div>
-                      <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{opt.icon} {opt.label}</span>
-                      <span style={{ ...mutedText, fontSize: '0.76rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Rank policy — only when late join is possible */}
-            {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
-              <div style={{ display: 'grid', gap: '0.35rem' }}>
-                <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🏅 Default rank for late joiners</label>
-                <div style={{ display: 'grid', gap: '0.4rem' }}>
-                  {RP_OPTIONS.map(opt => (
-                    <label key={opt.value} onClick={() => setRankPolicy(opt.value)}
-                      style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.55rem 0.75rem', borderRadius: '0.6rem',
-                        border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#e5e7eb'}`,
-                        background: rankPolicy === opt.value ? '#fffbeb' : '#fff', cursor: 'pointer', transition: 'border-color 0.15s' }}
-                    >
-                      <div style={{ marginTop: 2, width: 14, height: 14, borderRadius: '50%',
-                        border: `2px solid ${rankPolicy === opt.value ? '#f59e0b' : '#d1d5db'}`,
-                        background: rankPolicy === opt.value ? '#f59e0b' : '#fff', flexShrink: 0 }} />
-                      <div>
-                        <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{opt.icon} {opt.label}</span>
-                        <span style={{ ...mutedText, fontSize: '0.76rem', marginLeft: '0.4rem' }}>{opt.desc}</span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Late-join cap */}
-            {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
-              <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
-                <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
-                <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
-                <input type="number" min={1} max={50} value={lateJoinCap} disabled={!useLateJoinCap}
-                  onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
-                  style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }} />
-                <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
-              </label>
-            )}
+      {/* Basic info */}
+      <SectionBox title="📋 Basic info">
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="League name" style={S.inp} />
+        <select value={sport} onChange={e => setSport(e.target.value)} style={{ ...S.inp, background: '#fff' }}>
+          <option value="">— Select sport —</option>
+          {sports.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+        </select>
+        {sportScoring && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+            {[
+              `${sportScoring.wins_needed} ${sportScoring.unit_plural} to win`,
+              `${sportScoring.points_to_win} pts/game`,
+              `Win by ${sportScoring.win_by}`,
+              sportScoring.max_points ? `Max ${sportScoring.max_points}` : null,
+            ].filter(Boolean).map(t => (
+              <span key={t!} style={{ fontSize: '0.75rem', background: '#dbeafe', color: '#1e40af', borderRadius: '99px', padding: '0.2rem 0.6rem', fontWeight: 600 }}>{t}</span>
+            ))}
           </div>
         )}
-      </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+          <label style={{ display: 'grid', gap: '0.3rem' }}>
+            <span style={{ ...mutedText, fontSize: '0.8rem' }}>Start date</span>
+            <input type="date" value={start} onChange={e => setStart(e.target.value)} style={S.inp} />
+          </label>
+          <label style={{ display: 'grid', gap: '0.3rem' }}>
+            <span style={{ ...mutedText, fontSize: '0.8rem' }}>End date</span>
+            <input type="date" value={end} onChange={e => setEnd(e.target.value)} style={S.inp} />
+          </label>
+        </div>
+      </SectionBox>
+
+      {/* Game format */}
+      <SectionBox title="🎮 Game format">
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Play style</label>
+          <PillGroup
+            value={doublesMode}
+            onChange={setDoublesMode}
+            options={[
+              { value: 'none',        label: '👤 Singles only',            desc: 'Traditional 1v1 matches' },
+              { value: 'adhoc',       label: '👥 Singles + Ad-hoc doubles', desc: 'Doubles with any combination of 4 players from the league' },
+              { value: 'fixed_pairs', label: '🤝 Singles + Fixed pairs',    desc: 'Doubles with pre-set registered pairs' },
+            ]}
+          />
+          {doublesMode !== 'none' && (
+            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '3px solid #fde68a' }}>
+              {doublesMode === 'adhoc'
+                ? 'Any 4 players in the league can form ad-hoc doubles teams. Same matchup is limited to twice per week.'
+                : 'Admin registers fixed pairs. Only registered pairs can compete in doubles matches.'}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
+          <PillGroup
+            value={matchFormat}
+            onChange={setMatchFormat}
+            options={[
+              { value: 'adhoc',        label: '🎯 Ad-hoc',       desc: 'Players challenge each other freely' },
+              { value: 'round-robin',  label: '🔄 Round-robin',  desc: 'All players face each other in structured rounds' },
+            ]}
+          />
+        </div>
+      </SectionBox>
+
+      {/* Scoring & rules */}
+      <SectionBox title="🏆 Scoring & rules">
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Points (Win / Loss / No-game)</label>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            {(['Win', 'Loss', 'No-game'] as const).map((lbl, i) => {
+              const [val, setVal] = [
+                [scoringWin, setScoringWin],
+                [scoringLoss, setScoringLoss],
+                [scoringNoGame, setScoringNoGame],
+              ][i] as [number, (n: number) => void];
+              return (
+                <label key={lbl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                  <span style={{ ...mutedText, fontSize: '0.74rem' }}>{lbl}</span>
+                  <input type="number" min={-10} max={20} value={val}
+                    onChange={e => setVal(Number(e.target.value))}
+                    style={{ ...S.inp, width: 64, textAlign: 'center' }} />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week (default: 1)</label>
+          <PillGroup value={String(minMatchesPerWeek) as any} onChange={(v: string) => setMinMatchesPerWeek(Number(v))}
+            options={[1,2,3].map(n => ({ value: String(n) as any, label: String(n) }))} />
+        </div>
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus pts (default: 1) — awarded when lower-ranked player wins</label>
+          <input type="number" min={0} max={10} value={upsetBonus}
+            onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+            style={{ ...S.inp, width: 80 }} />
+        </div>
+      </SectionBox>
+
+      {/* Membership */}
+      <SectionBox title="🚪 Membership">
+        <div style={{ display: 'grid', gap: '0.35rem' }}>
+          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>When can players join?</label>
+          <RadioGroup value={joinPolicy} onChange={setJoinPolicy} options={JP_OPTIONS} />
+        </div>
+        {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+          <>
+            <div style={{ display: 'grid', gap: '0.35rem' }}>
+              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🏅 Default rank for late joiners</label>
+              <RadioGroup value={rankPolicy} onChange={setRankPolicy} options={RP_OPTIONS} />
+            </div>
+            <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+              <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
+              <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
+              <input type="number" min={1} max={50} value={lateJoinCap} disabled={!useLateJoinCap}
+                onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
+                style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }} />
+              <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
+            </label>
+          </>
+        )}
+      </SectionBox>
 
       <button style={S.primaryBtn} disabled={busy} onClick={handleCreate}>
         {busy ? 'Creating…' : '+ Create league'}
