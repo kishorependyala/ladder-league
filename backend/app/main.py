@@ -1641,6 +1641,13 @@ def _compute_standing_breakdown(lg: dict) -> dict:
     # ── Current standings ────────────────────────────────────────────
     current_ranks = _rank_players_from_matches(accepted)
 
+    # ── Start-of-league rank (seed order from finalRanking or player join order) ──
+    seed_order = final_ranking if final_ranking else [p["id"] for p in lg["players"]]
+    start_ranks = {
+        pid: seed_order.index(pid) + 1 if pid in seed_order else len(lg["players"])
+        for pid in [p["id"] for p in lg["players"]]
+    }
+
     # ── Per-round standings ──────────────────────────────────────────
     round_rank_maps = []
     for rnd in rounds:
@@ -1662,6 +1669,7 @@ def _compute_standing_breakdown(lg: dict) -> dict:
         breakdown.append({
             "playerId": pid,
             "playerName": name,
+            "startRank": start_ranks.get(pid, len(lg["players"])),
             "currentRank": current_ranks.get(pid, len(lg["players"])),
             "roundRanks": round_ranks,
         })

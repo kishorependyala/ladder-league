@@ -226,6 +226,7 @@ export interface RoundDef {
 export interface PlayerBreakdownRow {
   playerId: string;
   playerName: string;
+  startRank: number;
   currentRank: number;
   roundRanks: { roundIndex: number; label: string; rank: number }[];
 }
