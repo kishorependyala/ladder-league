@@ -969,6 +969,41 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
             _sync_playoff_match_result(lg, m)
         return {"success": True, "match": m}
 
+    # ── Doubles: all four players (or admin) must accept ──────────────
+    if match.get("matchType") == "doubles":
+        all_four = match.get("team1PlayerIds", []) + match.get("team2PlayerIds", [])
+
+        def finalize_doubles(m):
+            m["status"] = "accepted"
+            m["resolvedAt"] = datetime.now().isoformat()
+            score = m.get("score", {})
+            sets = score.get("sets", [])
+            scoring_fmt = lg.get("rules", {}).get("scoringFormat")
+            if sets:
+                raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                m["winnerTeam"] = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+            else:
+                sub_score = score.get("submitter", 0)
+                opp_score = score.get("opponent", 0)
+                m["winnerTeam"] = "team1" if sub_score >= opp_score else "team2"
+
+        if is_admin and user["id"] not in all_four:
+            match["acceptedPlayerIds"] = list(all_four)
+            finalize_doubles(match)
+            return save_and_sync(match)
+
+        if user["id"] not in all_four:
+            return {"success": False, "message": "Not authorized to accept this match"}
+
+        accepted = match.get("acceptedPlayerIds", [])
+        if user["id"] not in accepted:
+            accepted.append(user["id"])
+        match["acceptedPlayerIds"] = accepted
+
+        if all(pid in accepted for pid in all_four):
+            finalize_doubles(match)
+        return save_and_sync(match)
+
     if match.get("requiresBothAccept"):
         if is_admin and user["id"] not in [match["submitterId"], match["opponentId"]]:
             match["acceptedSides"] = ["submitter", "opponent"]
@@ -1012,6 +1047,17 @@ def api_reject_match(match_id: str, data: dict = Body(...)):
 
     is_admin = user["id"] in lg.get("adminIds", []) or is_super_admin(phone)
 
+    # ── Doubles: any of the four players (or admin) can reject ────────
+    if match.get("matchType") == "doubles":
+        all_four = match.get("team1PlayerIds", []) + match.get("team2PlayerIds", [])
+        if user["id"] not in all_four and not is_admin:
+            return {"success": False, "message": "Not authorized to reject this match"}
+        match["status"] = "rejected"
+        match["resolvedAt"] = datetime.now().isoformat()
+        match["rejectionNote"] = data.get("note", "")
+        save_match(match)
+        return {"success": True, "match": match}
+
     if not is_admin and match["opponentId"] != user["id"] and match["submitterId"] != user["id"]:
         return {"success": False, "message": "Not authorized to reject this match"}
 
@@ -1020,6 +1066,293 @@ def api_reject_match(match_id: str, data: dict = Body(...)):
     match["rejectionNote"] = data.get("note", "")
     save_match(match)
     return {"success": True, "match": match}
+
+
+def _build_pair_name(lg: dict, player1_id: str, player2_id: str) -> str:
+    """Generate a default 'Last/Last' display name for a doubles pair."""
+    players = {p["id"]: p for p in lg.get("players", [])}
+    p1 = players.get(player1_id, {})
+    p2 = players.get(player2_id, {})
+    p1_name = p1.get("lastName") or p1.get("firstName") or "?"
+    p2_name = p2.get("lastName") or p2.get("firstName") or "?"
+    return f"{p1_name}/{p2_name}"
+
+
+def _check_doubles_weekly_frequency(lg: dict, team1_ids: list, team2_ids: list) -> Optional[str]:
+    """Return an error string if the same 4-player matchup has already played twice this week."""
+    from datetime import date, timedelta
+    today = date.today()
+    week_start_iso = (today - timedelta(days=today.weekday())).isoformat()
+    new_combo = frozenset([frozenset(team1_ids), frozenset(team2_ids)])
+    count = 0
+    for m in list_matches(lg["sport"], lg["id"]):
+        if m.get("matchType") != "doubles":
+            continue
+        if m.get("status") == "rejected":
+            continue
+        date_played = (m.get("datePlayed") or (m.get("submittedAt") or "")[:10])
+        if date_played < week_start_iso:
+            continue
+        m_combo = frozenset([frozenset(m.get("team1PlayerIds", [])), frozenset(m.get("team2PlayerIds", []))])
+        if m_combo == new_combo:
+            count += 1
+    if count >= 2:
+        return "This combination of players has already played twice this week"
+    return None
+
+
+@app.post("/api/matches/submit-doubles")
+def api_submit_doubles_match(data: dict = Body(...)):
+    phone = data.get("phone")
+    league_id = data.get("leagueId")
+    team1_ids = data.get("team1PlayerIds", [])
+    team2_ids = data.get("team2PlayerIds", [])
+    score_data = data.get("score", {})
+    submitter_player_id = data.get("submitterPlayerId")
+
+    caller = get_user_by_phone(phone)
+    if not caller:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg or lg.get("status") not in ("active", "playoffs"):
+        return {"success": False, "message": "League not found or not accepting matches"}
+
+    doubles_mode = lg.get("rules", {}).get("doublesMode", "none")
+    if doubles_mode == "none":
+        return {"success": False, "message": "Doubles not enabled for this league"}
+
+    is_admin = caller["id"] in lg.get("adminIds", []) or is_super_admin(phone)
+
+    if len(team1_ids) != 2 or len(team2_ids) != 2:
+        return {"success": False, "message": "Each team must have exactly 2 players"}
+
+    all_four = team1_ids + team2_ids
+    if len(set(all_four)) != 4:
+        return {"success": False, "message": "All four players must be different"}
+
+    league_player_ids = {p["id"] for p in lg["players"]}
+    for pid in all_four:
+        if pid not in league_player_ids:
+            return {"success": False, "message": "All players must be members of this league"}
+
+    if submitter_player_id:
+        if not is_admin:
+            return {"success": False, "message": "Only admins can enter matches on behalf of players"}
+        if submitter_player_id not in all_four:
+            return {"success": False, "message": "Submitter player must be one of the four players"}
+    else:
+        if caller["id"] not in all_four:
+            return {"success": False, "message": "You must be one of the four players to submit"}
+
+    freq_error = _check_doubles_weekly_frequency(lg, team1_ids, team2_ids)
+    if freq_error:
+        return {"success": False, "message": freq_error}
+
+    pair1_id = None
+    pair2_id = None
+    if doubles_mode == "fixed_pairs":
+        pair1_id = data.get("pair1Id")
+        pair2_id = data.get("pair2Id")
+        if not pair1_id or not pair2_id:
+            return {"success": False, "message": "Pair IDs required for fixed pairs mode"}
+        pairs = lg.get("doublesPairs", [])
+        pair1 = next((p for p in pairs if p["id"] == pair1_id), None)
+        pair2 = next((p for p in pairs if p["id"] == pair2_id), None)
+        if not pair1 or not pair2:
+            return {"success": False, "message": "One or both pairs not found"}
+        p1_ids = sorted([pair1["player1Id"], pair1["player2Id"]])
+        p2_ids = sorted([pair2["player1Id"], pair2["player2Id"]])
+        if sorted(team1_ids) != p1_ids or sorted(team2_ids) != p2_ids:
+            return {"success": False, "message": "Team composition doesn't match the selected pairs"}
+
+    mid = next_match_id(lg["sport"], league_id)
+    effective_submitter = submitter_player_id or caller["id"]
+    admin_submitted_by = caller["id"] if submitter_player_id else None
+
+    # Auto-accept for the submitter (unless admin submitting on behalf)
+    accepted_player_ids: list = []
+    if not submitter_player_id and caller["id"] in all_four:
+        accepted_player_ids = [caller["id"]]
+
+    match = {
+        "id": mid,
+        "leagueId": league_id,
+        "sport": lg["sport"],
+        "matchType": "doubles",
+        "doublesMode": doubles_mode,
+        "team1PlayerIds": team1_ids,
+        "team2PlayerIds": team2_ids,
+        "submitterId": effective_submitter,
+        "opponentId": None,
+        "adminSubmittedBy": admin_submitted_by,
+        "requiresAllAccept": True,
+        "acceptedPlayerIds": accepted_player_ids,
+        "pair1Id": pair1_id,
+        "pair2Id": pair2_id,
+        "score": score_data,
+        "status": "pending",
+        "submittedAt": datetime.now().isoformat(),
+        "resolvedAt": None,
+        "isPlayoff": False,
+    }
+    save_match(match)
+    return {"success": True, "match": match}
+
+
+# ── Doubles pairs management ───────────────────────────────────────
+
+@app.get("/api/leagues/{league_id}/doubles/pairs")
+def api_list_doubles_pairs(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    return {"success": True, "pairs": lg.get("doublesPairs", [])}
+
+
+@app.post("/api/leagues/{league_id}/doubles/pairs")
+def api_create_doubles_pair(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    player1_id = data.get("player1Id")
+    player2_id = data.get("player2Id")
+    name = (data.get("name") or "").strip()
+
+    caller = get_user_by_phone(phone)
+    if not caller:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not is_super_admin(phone) and caller["id"] not in lg.get("adminIds", []):
+        return {"success": False, "message": "Admin access required"}
+
+    if not player1_id or not player2_id:
+        return {"success": False, "message": "Both player IDs required"}
+    if player1_id == player2_id:
+        return {"success": False, "message": "Players must be different"}
+
+    league_player_ids = {p["id"] for p in lg["players"]}
+    if player1_id not in league_player_ids or player2_id not in league_player_ids:
+        return {"success": False, "message": "Both players must be in the league"}
+
+    pairs = lg.get("doublesPairs", [])
+    new_combo = frozenset([player1_id, player2_id])
+    for existing in pairs:
+        if frozenset([existing["player1Id"], existing["player2Id"]]) == new_combo:
+            return {"success": False, "message": "This pair already exists"}
+
+    pair_id = f"pair_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+    pair = {
+        "id": pair_id,
+        "player1Id": player1_id,
+        "player2Id": player2_id,
+        "name": name or _build_pair_name(lg, player1_id, player2_id),
+        "createdAt": datetime.now().isoformat(),
+    }
+    pairs.append(pair)
+    lg["doublesPairs"] = pairs
+    save_league(lg)
+    return {"success": True, "pair": pair, "league": lg}
+
+
+@app.delete("/api/leagues/{league_id}/doubles/pairs/{pair_id}")
+def api_delete_doubles_pair(league_id: str, pair_id: str, phone: str = Query(...)):
+    caller = get_user_by_phone(phone)
+    if not caller:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not is_super_admin(phone) and caller["id"] not in lg.get("adminIds", []):
+        return {"success": False, "message": "Admin access required"}
+
+    pairs = lg.get("doublesPairs", [])
+    before = len(pairs)
+    lg["doublesPairs"] = [p for p in pairs if p["id"] != pair_id]
+    if len(lg["doublesPairs"]) == before:
+        return {"success": False, "message": "Pair not found"}
+    save_league(lg)
+    return {"success": True, "league": lg}
+
+
+# ── Doubles standings (fixed-pairs mode) ──────────────────────────
+
+def _compute_doubles_standings(lg: dict) -> dict:
+    """Compute pair standings for a fixed-pairs league."""
+    matches = list_matches(lg["sport"], lg["id"])
+    rules = {**default_rules(), **lg.get("rules", {})}
+    scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
+    pairs = lg.get("doublesPairs", [])
+
+    stats: dict = {}
+    for pair in pairs:
+        stats[pair["id"]] = {
+            "pair": pair,
+            "wins": 0,
+            "losses": 0,
+            "points": 0,
+            "rank": 0,
+            "matchLog": [],
+        }
+
+    for m in matches:
+        if m.get("status") != "accepted" or m.get("matchType") != "doubles":
+            continue
+        p1_id = m.get("pair1Id")
+        p2_id = m.get("pair2Id")
+        if not p1_id or not p2_id:
+            continue
+        if p1_id not in stats or p2_id not in stats:
+            continue
+
+        winner_team = m.get("winnerTeam")
+        if not winner_team:
+            score = m.get("score", {})
+            sets = score.get("sets", [])
+            scoring_fmt = rules.get("scoringFormat")
+            if sets:
+                raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+            else:
+                sub_score = score.get("submitter", 0)
+                opp_score = score.get("opponent", 0)
+                winner_team = "team1" if sub_score >= opp_score else "team2"
+        if not winner_team:
+            continue
+
+        winner_pair_id = p1_id if winner_team == "team1" else p2_id
+        loser_pair_id = p2_id if winner_team == "team1" else p1_id
+        win_pts = scoring.get("win", 3)
+        loss_pts = scoring.get("loss", 0)
+        submitted_at = m.get("submittedAt") or m.get("createdAt")
+
+        stats[winner_pair_id]["wins"] += 1
+        stats[winner_pair_id]["points"] += win_pts
+        stats[winner_pair_id]["matchLog"].append({
+            "matchId": m["id"], "opponentPairId": loser_pair_id,
+            "result": "win", "basePoints": win_pts, "score": m.get("score"), "submittedAt": submitted_at,
+        })
+        stats[loser_pair_id]["losses"] += 1
+        stats[loser_pair_id]["points"] += loss_pts
+        stats[loser_pair_id]["matchLog"].append({
+            "matchId": m["id"], "opponentPairId": winner_pair_id,
+            "result": "loss", "basePoints": loss_pts, "score": m.get("score"), "submittedAt": submitted_at,
+        })
+
+    sorted_stats = sorted(stats.values(), key=lambda x: -x["points"])
+    for i, s in enumerate(sorted_stats):
+        s["rank"] = i + 1
+    return {"leagueId": lg["id"], "standings": sorted_stats}
+
+
+@app.get("/api/leagues/{league_id}/doubles/standings")
+def api_doubles_standings(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    doubles_mode = lg.get("rules", {}).get("doublesMode", "none")
+    if doubles_mode != "fixed_pairs":
+        return {"success": False, "message": "Doubles standings are only available in fixed-pairs mode"}
+    return _compute_doubles_standings(lg)
 
 
 @app.get("/api/matches/pending")
@@ -1057,6 +1390,52 @@ def _compute_league_standings(lg: dict) -> list[dict]:
     for m in matches:
         if m.get("status") != "accepted" or m.get("isPlayoff"):
             continue
+
+        # ── Doubles match: distribute points to all four players ──────
+        if m.get("matchType") == "doubles":
+            team1_ids = m.get("team1PlayerIds", [])
+            team2_ids = m.get("team2PlayerIds", [])
+            winner_team = m.get("winnerTeam")
+            if not winner_team:
+                score = m.get("score", {})
+                sets = score.get("sets", [])
+                scoring_fmt = rules.get("scoringFormat")
+                if sets:
+                    raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                    winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+                else:
+                    sub_score = score.get("submitter", 0)
+                    opp_score = score.get("opponent", 0)
+                    winner_team = "team1" if sub_score >= opp_score else "team2"
+            if not winner_team:
+                continue
+            winning_ids = team1_ids if winner_team == "team1" else team2_ids
+            losing_ids = team2_ids if winner_team == "team1" else team1_ids
+            win_pts = scoring.get("win", 3)
+            loss_pts = scoring.get("loss", 0)
+            submitted_at = m.get("submittedAt") or m.get("createdAt")
+            for pid in winning_ids:
+                if pid in stats:
+                    stats[pid]["wins"] += 1
+                    stats[pid]["points"] += win_pts
+                    stats[pid]["matchLog"].append({
+                        "matchId": m["id"],
+                        "opponentId": losing_ids[0] if losing_ids else None,
+                        "result": "win", "basePoints": win_pts, "upsetBonus": 0,
+                        "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
+                    })
+            for pid in losing_ids:
+                if pid in stats:
+                    stats[pid]["losses"] += 1
+                    stats[pid]["points"] += loss_pts
+                    stats[pid]["matchLog"].append({
+                        "matchId": m["id"],
+                        "opponentId": winning_ids[0] if winning_ids else None,
+                        "result": "loss", "basePoints": loss_pts, "upsetBonus": 0,
+                        "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
+                    })
+            continue
+
         sid = m["submitterId"]
         oid = m["opponentId"]
         winner = _match_winner_player_id(m)
@@ -1192,6 +1571,36 @@ def _compute_standing_breakdown(lg: dict) -> dict:
             stats[p["id"]] = {"points": 0}
 
         for m in match_subset:
+            # ── Doubles match ────────────────────────────────────────
+            if m.get("matchType") == "doubles":
+                team1_ids = m.get("team1PlayerIds", [])
+                team2_ids = m.get("team2PlayerIds", [])
+                winner_team = m.get("winnerTeam")
+                if not winner_team:
+                    score = m.get("score", {})
+                    sets = score.get("sets", [])
+                    scoring_fmt = rules.get("scoringFormat")
+                    if sets:
+                        raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                        winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+                    else:
+                        sub_score = score.get("submitter", 0)
+                        opp_score = score.get("opponent", 0)
+                        winner_team = "team1" if sub_score >= opp_score else "team2"
+                if not winner_team:
+                    continue
+                winning_ids = team1_ids if winner_team == "team1" else team2_ids
+                losing_ids = team2_ids if winner_team == "team1" else team1_ids
+                win_pts = scoring.get("win", 3)
+                loss_pts = scoring.get("loss", 0)
+                for pid in winning_ids:
+                    if pid in stats:
+                        stats[pid]["points"] += win_pts
+                for pid in losing_ids:
+                    if pid in stats:
+                        stats[pid]["points"] += loss_pts
+                continue
+
             sid = m["submitterId"]
             oid = m["opponentId"]
             winner = _match_winner_player_id(m)

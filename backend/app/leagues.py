@@ -259,16 +259,22 @@ def get_pending_matches_for_user(user_id: str) -> list:
         for m in list_matches(league["sport"], league["id"]):
             if m.get("status") != "pending":
                 continue
-            accepted_sides = m.get("acceptedSides", [])
-            requires_both = m.get("requiresBothAccept", False)
-            if requires_both:
-                if m.get("opponentId") == user_id and "opponent" not in accepted_sides:
-                    pending.append(m)
-                elif m.get("submitterId") == user_id and "submitter" not in accepted_sides:
+            if m.get("matchType") == "doubles":
+                all_four = m.get("team1PlayerIds", []) + m.get("team2PlayerIds", [])
+                accepted = m.get("acceptedPlayerIds", [])
+                if user_id in all_four and user_id not in accepted:
                     pending.append(m)
             else:
-                if m.get("opponentId") == user_id:
-                    pending.append(m)
+                accepted_sides = m.get("acceptedSides", [])
+                requires_both = m.get("requiresBothAccept", False)
+                if requires_both:
+                    if m.get("opponentId") == user_id and "opponent" not in accepted_sides:
+                        pending.append(m)
+                    elif m.get("submitterId") == user_id and "submitter" not in accepted_sides:
+                        pending.append(m)
+                else:
+                    if m.get("opponentId") == user_id:
+                        pending.append(m)
     return pending
 
 

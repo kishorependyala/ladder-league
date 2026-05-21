@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { acceptMatch, findLeaguePlayer, rejectMatch, type League, type Match, type User } from '../api';
+import { acceptMatch, findLeaguePlayer, rejectMatch, getDisplayName, type League, type Match, type User } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type PendingMatchesProps = {
@@ -23,12 +23,6 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
   );
 
   const getLeagueName = (match: Match) => leagueLookup?.[match.leagueId]?.name || 'League';
-  const getPlayerName = (match: Match, side: 'submitter' | 'opponent') => {
-    const league = leagueLookup?.[match.leagueId];
-    return side === 'submitter'
-      ? findLeaguePlayer(league, match.submitterId, match.submitter)
-      : findLeaguePlayer(league, match.opponentId, match.opponent);
-  };
 
   const formatScore = (match: Match) => {
     const sets = match.score?.sets;
@@ -41,7 +35,42 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
     return 'a result';
   };
 
+  // ── Doubles helpers ───────────────────────────────────────────────
+
+  const isDoubles = (match: Match) => match.matchType === 'doubles';
+
+  const getPlayerName = (match: Match, side: 'submitter' | 'opponent') => {
+    const league = leagueLookup?.[match.leagueId];
+    return side === 'submitter'
+      ? findLeaguePlayer(league, match.submitterId, match.submitter)
+      : findLeaguePlayer(league, match.opponentId, match.opponent);
+  };
+
+  const getDoublesTeamLabel = (match: Match, team: 'team1' | 'team2') => {
+    const league = leagueLookup?.[match.leagueId];
+    const ids = team === 'team1' ? (match.team1PlayerIds ?? []) : (match.team2PlayerIds ?? []);
+    return ids.map(id => {
+      const p = league?.players.find(pl => pl.id === id);
+      return p ? getDisplayName(p) : id;
+    }).join(' / ');
+  };
+
+  const getDoublesPendingText = (match: Match) => {
+    const league = leagueLookup?.[match.leagueId];
+    const all = [...(match.team1PlayerIds ?? []), ...(match.team2PlayerIds ?? [])];
+    const accepted = match.acceptedPlayerIds ?? [];
+    const parts = all.map(id => {
+      const p = league?.players.find(pl => pl.id === id);
+      const name = p ? (p.firstName ?? '') : id;
+      const done = accepted.includes(id);
+      return `${done ? '✓' : '○'} ${name}`;
+    });
+    const prefix = match.adminSubmittedBy ? 'Admin entered · confirmations:' : 'Waiting for confirmations:';
+    return `${prefix} ${parts.join(' · ')}`;
+  };
+
   const getPendingText = (match: Match) => {
+    if (isDoubles(match)) return getDoublesPendingText(match);
     const submitterName = getPlayerName(match, 'submitter');
     const opponentName = getPlayerName(match, 'opponent');
     if (!match.requiresBothAccept) {
@@ -55,6 +84,19 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
   };
 
   const getActionState = (match: Match) => {
+    if (isDoubles(match)) {
+      const all = [...(match.team1PlayerIds ?? []), ...(match.team2PlayerIds ?? [])];
+      const accepted = match.acceptedPlayerIds ?? [];
+      const amI = all.includes(user.id);
+      const alreadyAccepted = accepted.includes(user.id);
+      if (isAdmin && !amI) {
+        return { canAccept: true, canReject: true, acceptLabel: 'Accept for all' };
+      }
+      if (amI) {
+        return { canAccept: !alreadyAccepted, canReject: true, acceptLabel: 'Accept' };
+      }
+      return { canAccept: false, canReject: false, acceptLabel: 'Accept' };
+    }
     const acceptedSides = match.acceptedSides || [];
     const mySide = user.id === match.submitterId ? 'submitter' : user.id === match.opponentId ? 'opponent' : null;
     if (match.requiresBothAccept) {
@@ -66,11 +108,7 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
         };
       }
       if (isAdmin) {
-        return {
-          canAccept: true,
-          canReject: true,
-          acceptLabel: 'Accept for both',
-        };
+        return { canAccept: true, canReject: true, acceptLabel: 'Accept for both' };
       }
       return { canAccept: false, canReject: false, acceptLabel: 'Accept' };
     }
@@ -122,13 +160,24 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
         <div style={{ display: 'grid', gap: '0.9rem' }}>
           {visibleMatches.map(match => {
             const actions = getActionState(match);
+            const doubles = isDoubles(match);
             return (
               <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '1rem', background: '#fffbeb', display: 'grid', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <div>
-                    <strong style={{ color: '#78350f' }}>{getLeagueName(match)}</strong>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <strong style={{ color: '#78350f' }}>{getLeagueName(match)}</strong>
+                      {doubles && (
+                        <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '0.15rem 0.5rem', fontWeight: 700 }}>
+                          🏸 Doubles
+                        </span>
+                      )}
+                    </div>
                     <p style={{ ...mutedText, marginTop: '0.25rem' }}>
-                      {getPlayerName(match, 'submitter')} vs {getPlayerName(match, 'opponent')} · {formatScore(match)}
+                      {doubles
+                        ? `${getDoublesTeamLabel(match, 'team1')} vs ${getDoublesTeamLabel(match, 'team2')} · ${formatScore(match)}`
+                        : `${getPlayerName(match, 'submitter')} vs ${getPlayerName(match, 'opponent')} · ${formatScore(match)}`
+                      }
                     </p>
                     <p style={{ ...mutedText, marginTop: '0.25rem' }}>{getPendingText(match)}</p>
                     {match.score?.details && <p style={{ ...mutedText, marginTop: '0.25rem' }}>{match.score.details}</p>}
@@ -170,3 +219,4 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
 }
 
 export default PendingMatches;
+

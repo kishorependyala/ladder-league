@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
+import DoublesStandings from './DoublesStandings';
 import MatchGrid from './MatchGrid';
 import PendingMatches from './PendingMatches';
 import PlayoffBracket from './PlayoffBracket';
 import StandingBreakdown from './StandingBreakdown';
 import RoundsTab from './RoundsTab';
+import SubmitDoublesMatch from './SubmitDoublesMatch';
 import SubmitMatch from './SubmitMatch';
 import LeagueRulesSummary from './LeagueRulesSummary';
 
@@ -15,7 +17,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules' | 'doubles';
 
 type MatchResultCard = {
   match: Match;
@@ -139,6 +141,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
   const [showSubmitMatch, setShowSubmitMatch] = useState(false);
+  const [showSubmitDoubles, setShowSubmitDoubles] = useState(false);
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -270,6 +273,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
                   ➕ Add Score
                 </button>
+                {(currentLeague.rules?.doublesMode === 'adhoc' || currentLeague.rules?.doublesMode === 'fixed_pairs') && (
+                  <button style={{ ...S.smallBtn, background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc' }} onClick={() => setShowSubmitDoubles(true)}>
+                    🏸 Add Doubles
+                  </button>
+                )}
                 <button
                   style={{ ...S.smallBtn, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', fontSize: '1.2rem', padding: '0.3rem 0.65rem' }}
                   title="Coin flip"
@@ -338,6 +346,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ['rounds', '📅 Rounds'],
             ['schedule', '📋 Schedule & Pending'],
             ['rules', '📖 League Rules'],
+            ...(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none' ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -476,10 +485,18 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 <div style={{ display: 'grid', gap: '0.8rem' }}>
                   {matches.map(match => (
                     <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem', background: '#fffbeb' }}>
-                      <strong style={{ color: '#78350f' }}>
-                        {findLeaguePlayer(currentLeague, match.submitterId, match.submitter)} vs {findLeaguePlayer(currentLeague, match.opponentId, match.opponent)}
-                        {match.isPlayoff && <span style={{ fontSize: '0.78rem', color: '#6d28d9', marginLeft: '0.45rem' }}>• playoff</span>}
-                      </strong>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <strong style={{ color: '#78350f' }}>
+                          {match.matchType === 'doubles'
+                            ? `${(match.team1PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')} vs ${(match.team2PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')}`
+                            : `${findLeaguePlayer(currentLeague, match.submitterId, match.submitter)} vs ${findLeaguePlayer(currentLeague, match.opponentId, match.opponent)}`
+                          }
+                        </strong>
+                        {match.matchType === 'doubles' && (
+                          <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '0.15rem 0.5rem', fontWeight: 700 }}>🏸 Doubles</span>
+                        )}
+                        {match.isPlayoff && <span style={{ fontSize: '0.78rem', color: '#6d28d9' }}>• playoff</span>}
+                      </div>
                       <p style={{ ...mutedText, marginTop: '0.35rem' }}>
                         {formatScore(match)}
                         {match.status ? ` • ${match.status}` : ''}
@@ -495,6 +512,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         )}
         {activeTab === 'rules' && (
           <LeagueRulesSummary league={currentLeague} />
+        )}
+
+        {activeTab === 'doubles' && (
+          <DoublesStandings
+            league={currentLeague}
+            user={user}
+            isAdmin={isAdmin}
+            onLeagueUpdated={updated => setCurrentLeague(updated)}
+          />
         )}
       </div>
 
@@ -539,6 +565,34 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               onSubmitted={() => {
                 setActiveEnterPair(null);
                 setShowSubmitMatch(false);
+                loadData();
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {showSubmitDoubles && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+          onClick={() => setShowSubmitDoubles(false)}
+        >
+          <div style={{ width: '100%', maxWidth: 680, maxHeight: '100%', overflowY: 'auto' }} onClick={event => event.stopPropagation()}>
+            <SubmitDoublesMatch
+              league={currentLeague}
+              user={user}
+              onCancel={() => setShowSubmitDoubles(false)}
+              onSubmitted={() => {
+                setShowSubmitDoubles(false);
                 loadData();
               }}
             />

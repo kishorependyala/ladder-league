@@ -72,6 +72,8 @@ export interface LeagueRules {
   newPlayerRankPolicy: 'bottom' | 'middle' | 'provisional' | 'admin_set';
   /** Max players who can join after draft phase (null = unlimited) */
   lateJoinCap: number | null;
+  /** Doubles mode for the league */
+  doublesMode?: 'none' | 'adhoc' | 'fixed_pairs';
 }
 
 export interface ScoringFormat {
@@ -123,6 +125,15 @@ export interface League {
   startedAt?: string;
   playoffs?: Playoffs;
   blocks?: LeagueBlock[];
+  doublesPairs?: DoublesPair[];
+}
+
+export interface DoublesPair {
+  id: string;
+  player1Id: string;
+  player2Id: string;
+  name: string;
+  createdAt: string;
 }
 
 export interface Sport {
@@ -170,6 +181,16 @@ export interface Match {
   playoffGroup?: string | null;
   playoffMatchupId?: string | null;
   winner?: string;
+  // Doubles-specific fields
+  matchType?: 'singles' | 'doubles';
+  doublesMode?: 'adhoc' | 'fixed_pairs';
+  team1PlayerIds?: string[];
+  team2PlayerIds?: string[];
+  requiresAllAccept?: boolean;
+  acceptedPlayerIds?: string[];
+  pair1Id?: string | null;
+  pair2Id?: string | null;
+  winnerTeam?: 'team1' | 'team2' | null;
 }
 
 export interface MatchLogEntry {
@@ -579,4 +600,65 @@ export function purgeStaleVotes(phone: string): Promise<{ success: boolean; purg
 
 export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
   return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);
+}
+
+// ── Doubles ────────────────────────────────────────────────────────
+
+export interface DoublesStandingsRow {
+  pair: DoublesPair;
+  wins: number;
+  losses: number;
+  points: number;
+  rank: number;
+  matchLog: {
+    matchId: string;
+    opponentPairId: string;
+    result: 'win' | 'loss';
+    basePoints: number;
+    score?: MatchScore;
+    submittedAt?: string;
+  }[];
+}
+
+export interface DoublesStandingsResponse {
+  leagueId: string;
+  standings: DoublesStandingsRow[];
+}
+
+export function submitDoublesMatch(data: {
+  phone: string;
+  leagueId: string;
+  team1PlayerIds: [string, string];
+  team2PlayerIds: [string, string];
+  score: MatchScore;
+  pair1Id?: string;
+  pair2Id?: string;
+  submitterPlayerId?: string;
+}): Promise<{ success: boolean; match?: Match; message?: string }> {
+  return post('/api/matches/submit-doubles', data);
+}
+
+export function getDoublesPairs(leagueId: string): Promise<{ success: boolean; pairs: DoublesPair[]; message?: string }> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/pairs`);
+}
+
+export function createDoublesPair(
+  leagueId: string,
+  phone: string,
+  player1Id: string,
+  player2Id: string,
+  name?: string,
+): Promise<{ success: boolean; pair?: DoublesPair; league?: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/pairs`, {
+    phone, player1Id, player2Id, ...(name ? { name } : {}),
+  });
+}
+
+export function deleteDoublesPair(leagueId: string, pairId: string, phone: string): Promise<{ success: boolean; league?: League; message?: string }> {
+  return fetch(`${API_BASE}/api/leagues/${encodeURIComponent(leagueId)}/doubles/pairs/${encodeURIComponent(pairId)}?phone=${encodeURIComponent(phone)}`, { method: 'DELETE' })
+    .then(r => r.json());
+}
+
+export function getDoublesStandings(leagueId: string): Promise<DoublesStandingsResponse> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/standings`);
 }

@@ -75,6 +75,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [rankPolicy, setRankPolicy] = useState<RankPolicy>(league.rules?.newPlayerRankPolicy ?? 'bottom');
   const [useLateJoinCap, setUseLateJoinCap] = useState(league.rules?.lateJoinCap != null);
   const [lateJoinCap, setLateJoinCap] = useState(league.rules?.lateJoinCap ?? 5);
+  const [doublesMode, setDoublesMode] = useState<'none' | 'adhoc' | 'fixed_pairs'>(league.rules?.doublesMode ?? 'none');
 
   // League-point values
   const [winPts, setWinPts] = useState(league.rules?.scoring?.win ?? 3);
@@ -122,6 +123,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         newPlayerRankPolicy: rankPolicy,
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
         scoring: { win: winPts, loss: lossPts, noGame: noGamePts },
+        doublesMode,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -150,6 +152,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         newPlayerRankPolicy: 'bottom',
         lateJoinCap: null,
         scoring: { win: 3, loss: 0, noGame: -1 },
+        doublesMode: 'none',
       });
       if (res.success) {
         onUpdated(res.league);
@@ -169,6 +172,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         setWinPts(3);
         setLossPts(0);
         setNoGamePts(-1);
+        setDoublesMode('none');
         setSaved2(true);
         setTimeout(() => setSaved2(false), 2500);
       } else {
@@ -454,6 +458,43 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         )}
       </Section>
 
+      {/* ── Doubles ── */}
+      <Section title="🏸 Doubles">
+        <p style={{ ...mutedText, fontSize: '0.78rem', margin: 0 }}>
+          Allow doubles (2v2) matches in this league.
+        </p>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {([
+            ['none',        '❌ Disabled'],
+            ['adhoc',       '🎲 Ad-hoc partners'],
+            ['fixed_pairs', '👫 Fixed pairs'],
+          ] as [typeof doublesMode, string][]).map(([v, label]) => (
+            <button key={v} onClick={() => setDoublesMode(v)} style={{
+              padding: '0.45rem 0.9rem', borderRadius: '99px', border: '2px solid',
+              borderColor: doublesMode === v ? '#f59e0b' : '#e5e7eb',
+              background: doublesMode === v ? '#fef3c7' : '#fff',
+              color: doublesMode === v ? '#92400e' : '#6b7280',
+              fontWeight: doublesMode === v ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer',
+            }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {doublesMode === 'adhoc' && (
+          <div style={S.infoBox}>
+            Partners are chosen fresh each game. All 4 players must confirm results.
+            Same 4-player combination limited to <strong>2 matches/week</strong>.
+            Points count toward individual standings.
+          </div>
+        )}
+        {doublesMode === 'fixed_pairs' && (
+          <div style={S.infoBox}>
+            Admin defines permanent pairs. A separate doubles leaderboard is tracked per pair.
+            All 4 players must confirm results. Same pair matchup limited to <strong>2 matches/week</strong>.
+          </div>
+        )}
+      </Section>
+
       <div style={{ background: '#f0fdf4', borderRadius: '0.75rem', padding: '0.75rem 1rem', fontSize: '0.85rem', color: '#166534', border: '1px solid #bbf7d0' }}>
         <strong>Effective rules:</strong> First to win {customWins} {customWins === 1 ? sportDefault.unit : sportDefault.unit_plural}
         · {effectivePoints} pts/{sportDefault.unit}
@@ -465,6 +506,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         · join: {JOIN_POLICY_OPTIONS.find(o => o.value === joinPolicy)?.label ?? joinPolicy}
         {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && ` · new rank: ${RANK_POLICY_OPTIONS.find(o => o.value === rankPolicy)?.label ?? rankPolicy}`}
         {useLateJoinCap && ` · max ${lateJoinCap} late joiners`}
+        {doublesMode !== 'none' && ` · doubles: ${doublesMode === 'adhoc' ? 'ad-hoc' : 'fixed pairs'}`}
       </div>
 
       <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
