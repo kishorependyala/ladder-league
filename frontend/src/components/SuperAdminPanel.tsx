@@ -608,7 +608,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [matchFormat, setMatchFormat] = useState<'adhoc' | 'round-robin'>('adhoc');
-  const [doublesMode, setDoublesMode] = useState<'none' | 'adhoc' | 'fixed_pairs'>('none');
+  const [doublesMode, setDoublesMode] = useState<'' | 'none' | 'adhoc' | 'fixed_pairs'>('');
   const [scoringWin, setScoringWin] = useState(3);
   const [scoringLoss, setScoringLoss] = useState(0);
   const [scoringNoGame, setScoringNoGame] = useState(-1);
@@ -636,7 +636,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   ];
 
   const handleCreate = async () => {
-    if (!name || !sport || !start || !end) { onFail('All fields are required.'); return; }
+    if (!name || !sport || !start || !end || !doublesMode) { onFail('All fields are required, including league type (Singles or Doubles).'); return; }
     setBusy(true);
     try {
       const rules = {
@@ -652,7 +652,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       const res = await createLeague(sessionUser.phone, name, sport, start, end, rules);
       onCreated(res.league);
       setName(''); setSport(''); setStart(''); setEnd('');
-      setMatchFormat('adhoc'); setDoublesMode('none');
+      setMatchFormat('adhoc'); setDoublesMode('');
       setScoringWin(3); setScoringLoss(0); setScoringNoGame(-1);
       setMinMatchesPerWeek(1); setUpsetBonus(1);
       setJoinPolicy('draft_only'); setRankPolicy('bottom');
@@ -696,20 +696,24 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
         </div>
       </SectionBox>
 
-      {/* Game format */}
-      <SectionBox title="🎮 Game format">
+      {/* League type — mandatory */}
+      <SectionBox title="🎾 League type *">
         <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Play style</label>
+          {!doublesMode && (
+            <div style={{ fontSize: '0.8rem', background: '#fef9c3', border: '1px solid #fde047', borderRadius: '0.5rem', padding: '0.45rem 0.75rem', color: '#854d0e', fontWeight: 600 }}>
+              ⚠️ You must choose a league type before continuing.
+            </div>
+          )}
           <PillGroup
             value={doublesMode}
             onChange={setDoublesMode}
             options={[
-              { value: 'none',        label: '👤 Singles only',            desc: 'Traditional 1v1 matches' },
-              { value: 'adhoc',       label: '👥 Singles + Ad-hoc doubles', desc: 'Doubles with any combination of 4 players from the league' },
-              { value: 'fixed_pairs', label: '🤝 Singles + Fixed pairs',    desc: 'Doubles with pre-set registered pairs' },
+              { value: 'none',        label: '🎾 Singles',              desc: 'Traditional 1v1 matches only' },
+              { value: 'adhoc',       label: '🏸 Doubles — Ad-hoc',     desc: 'Any 4 players from the league form teams each match' },
+              { value: 'fixed_pairs', label: '🏸 Doubles — Fixed pairs', desc: 'Admin registers fixed pairs; only pairs compete' },
             ]}
           />
-          {doublesMode !== 'none' && (
+          {doublesMode && doublesMode !== 'none' && (
             <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '3px solid #fde68a' }}>
               {doublesMode === 'adhoc'
                 ? 'Any 4 players in the league can form ad-hoc doubles teams. Same matchup is limited to twice per week.'
@@ -717,81 +721,85 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
             </div>
           )}
         </div>
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
-          <PillGroup
-            value={matchFormat}
-            onChange={setMatchFormat}
-            options={[
-              { value: 'adhoc',        label: '🎯 Ad-hoc',       desc: 'Players challenge each other freely' },
-              { value: 'round-robin',  label: '🔄 Round-robin',  desc: 'All players face each other in structured rounds' },
-            ]}
-          />
-        </div>
       </SectionBox>
 
-      {/* Scoring & rules */}
-      <SectionBox title="🏆 Scoring & rules">
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Points (Win / Loss / No-game)</label>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-            {(['Win', 'Loss', 'No-game'] as const).map((lbl, i) => {
-              const [val, setVal] = [
-                [scoringWin, setScoringWin],
-                [scoringLoss, setScoringLoss],
-                [scoringNoGame, setScoringNoGame],
-              ][i] as [number, (n: number) => void];
-              return (
-                <label key={lbl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
-                  <span style={{ ...mutedText, fontSize: '0.74rem' }}>{lbl}</span>
-                  <input type="number" min={-10} max={20} value={val}
-                    onChange={e => setVal(Number(e.target.value))}
-                    style={{ ...S.inp, width: 64, textAlign: 'center' }} />
-                </label>
-              );
-            })}
+      {/* Remaining sections — only visible once league type is chosen */}
+      {doublesMode && (<>
+        <SectionBox title="🎮 Game format">
+          <div style={{ display: 'grid', gap: '0.35rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
+            <PillGroup
+              value={matchFormat}
+              onChange={setMatchFormat}
+              options={[
+                { value: 'adhoc',        label: '🎯 Ad-hoc',       desc: 'Players challenge each other freely' },
+                { value: 'round-robin',  label: '🔄 Round-robin',  desc: 'All players face each other in structured rounds' },
+              ]}
+            />
           </div>
-        </div>
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week (default: 1)</label>
-          <PillGroup value={String(minMatchesPerWeek) as any} onChange={(v: string) => setMinMatchesPerWeek(Number(v))}
-            options={[1,2,3].map(n => ({ value: String(n) as any, label: String(n) }))} />
-        </div>
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus pts (default: 1) — awarded when lower-ranked player wins</label>
-          <input type="number" min={0} max={10} value={upsetBonus}
-            onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
-            style={{ ...S.inp, width: 80 }} />
-        </div>
-      </SectionBox>
+        </SectionBox>
 
-      {/* Membership */}
-      <SectionBox title="🚪 Membership">
-        <div style={{ display: 'grid', gap: '0.35rem' }}>
-          <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>When can players join?</label>
-          <RadioGroup value={joinPolicy} onChange={setJoinPolicy} options={JP_OPTIONS} />
-        </div>
-        {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
-          <>
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🏅 Default rank for late joiners</label>
-              <RadioGroup value={rankPolicy} onChange={setRankPolicy} options={RP_OPTIONS} />
+        <SectionBox title="🏆 Scoring & rules">
+          <div style={{ display: 'grid', gap: '0.35rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Points (Win / Loss / No-game)</label>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              {(['Win', 'Loss', 'No-game'] as const).map((lbl, i) => {
+                const [val, setVal] = [
+                  [scoringWin, setScoringWin],
+                  [scoringLoss, setScoringLoss],
+                  [scoringNoGame, setScoringNoGame],
+                ][i] as [number, (n: number) => void];
+                return (
+                  <label key={lbl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                    <span style={{ ...mutedText, fontSize: '0.74rem' }}>{lbl}</span>
+                    <input type="number" min={-10} max={20} value={val}
+                      onChange={e => setVal(Number(e.target.value))}
+                      style={{ ...S.inp, width: 64, textAlign: 'center' }} />
+                  </label>
+                );
+              })}
             </div>
-            <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
-              <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
-              <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
-              <input type="number" min={1} max={50} value={lateJoinCap} disabled={!useLateJoinCap}
-                onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
-                style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }} />
-              <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
-            </label>
-          </>
-        )}
-      </SectionBox>
+          </div>
+          <div style={{ display: 'grid', gap: '0.35rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week (default: 1)</label>
+            <PillGroup value={String(minMatchesPerWeek) as any} onChange={(v: string) => setMinMatchesPerWeek(Number(v))}
+              options={[1,2,3].map(n => ({ value: String(n) as any, label: String(n) }))} />
+          </div>
+          <div style={{ display: 'grid', gap: '0.35rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus pts (default: 1) — awarded when lower-ranked player wins</label>
+            <input type="number" min={0} max={10} value={upsetBonus}
+              onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
+              style={{ ...S.inp, width: 80 }} />
+          </div>
+        </SectionBox>
 
-      <button style={S.primaryBtn} disabled={busy} onClick={handleCreate}>
-        {busy ? 'Creating…' : '+ Create league'}
-      </button>
+        <SectionBox title="🚪 Membership">
+          <div style={{ display: 'grid', gap: '0.35rem' }}>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>When can players join?</label>
+            <RadioGroup value={joinPolicy} onChange={setJoinPolicy} options={JP_OPTIONS} />
+          </div>
+          {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && (
+            <>
+              <div style={{ display: 'grid', gap: '0.35rem' }}>
+                <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>🏅 Default rank for late joiners</label>
+                <RadioGroup value={rankPolicy} onChange={setRankPolicy} options={RP_OPTIONS} />
+              </div>
+              <label style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={useLateJoinCap} onChange={e => setUseLateJoinCap(e.target.checked)} style={{ width: 16, height: 16 }} />
+                <span style={{ ...mutedText, fontSize: '0.85rem' }}>Limit late joiners to</span>
+                <input type="number" min={1} max={50} value={lateJoinCap} disabled={!useLateJoinCap}
+                  onChange={e => setLateJoinCap(Math.max(1, Number(e.target.value)))}
+                  style={{ ...S.inp, width: 60, textAlign: 'center', opacity: useLateJoinCap ? 1 : 0.4 }} />
+                <span style={{ ...mutedText, fontSize: '0.85rem' }}>players</span>
+              </label>
+            </>
+          )}
+        </SectionBox>
+
+        <button style={S.primaryBtn} disabled={busy} onClick={handleCreate}>
+          {busy ? 'Creating…' : '+ Create league'}
+        </button>
+      </>)}
     </div>
   );
 }
