@@ -56,7 +56,7 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
       rows: [
         { icon: '📅', label: 'Min matches/week',    value: String(rules?.minMatchesPerWeek ?? 1) },
         { icon: '⚠️', label: 'Missed week penalty', value: `${rules?.penaltyPerMissedWeek ?? 1} pts deducted` },
-        { icon: '🗓️', label: 'Block duration',      value: `${rules?.blockDurationDays ?? 7} days` },
+        { icon: '🗓️', label: 'Round duration',      value: `${rules?.blockDurationDays ?? 7} days` },
         { icon: '🏆', label: 'Playoffs',            value: `${rules?.playoffsWeeks ?? 1} week${(rules?.playoffsWeeks ?? 1) !== 1 ? 's' : ''}` },
       ],
     },

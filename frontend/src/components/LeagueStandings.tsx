@@ -287,12 +287,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           const totalBlocks = blocks.length;
           if (curIdx >= 0) {
             const cur = blocks[curIdx];
-            const msLeft = new Date(cur.endDate).getTime() - Date.now();
+            const msLeft = new Date(cur.endDate + 'T00:00:00').getTime() - Date.now();
             const daysLeft = Math.max(0, Math.ceil(msLeft / 86400000));
             return (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '0.55rem 0.8rem', background: '#fef3c7', borderRadius: '0.65rem', border: '1px solid #fde68a' }}>
                 <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.88rem' }}>
-                  📅 Block {curIdx + 1} of {totalBlocks}
+                  📅 Round {curIdx + 1} of {totalBlocks}
                 </span>
                 {/* mini progress bar */}
                 <div style={{ flex: 1, minWidth: 80, height: 7, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
@@ -317,7 +317,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           if (todayIso >= blocks[totalBlocks - 1].endDate) {
             return (
               <div style={{ padding: '0.5rem 0.8rem', background: '#ede9fe', borderRadius: '0.65rem', border: '1px solid #c4b5fd', fontSize: '0.85rem', color: '#6d28d9', fontWeight: 600 }}>
-                🏆 All {totalBlocks} blocks complete — playoffs can begin.
+                🏆 All {totalBlocks} rounds complete — playoffs can begin.
               </div>
             );
           }
