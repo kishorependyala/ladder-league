@@ -194,6 +194,25 @@ export interface StandingsResponse {
   standings: StandingsRow[];
 }
 
+export interface RoundDef {
+  label: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface PlayerBreakdownRow {
+  playerId: string;
+  playerName: string;
+  currentRank: number;
+  roundRanks: { roundIndex: number; label: string; rank: number }[];
+}
+
+export interface StandingBreakdownResponse {
+  leagueId: string;
+  rounds: RoundDef[];
+  breakdown: PlayerBreakdownRow[];
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, init);
   const data = await response.json().catch(() => null);
@@ -403,6 +422,10 @@ export function getLeagueMatches(id: string): Promise<Match[]> {
 
 export function getLeagueStandings(id: string): Promise<StandingsResponse> {
   return get(`/api/leagues/${encodeURIComponent(id)}/standings`);
+}
+
+export function getStandingBreakdown(id: string): Promise<StandingBreakdownResponse> {
+  return get(`/api/leagues/${encodeURIComponent(id)}/standing-breakdown`);
 }
 
 export async function getPlayoffs(leagueId: string): Promise<Playoffs | null> {

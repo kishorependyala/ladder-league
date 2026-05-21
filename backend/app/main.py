@@ -1125,6 +1125,155 @@ def api_standings(league_id: str):
     return {"leagueId": league_id, "standings": _compute_league_standings(lg)}
 
 
+def _compute_standing_breakdown(lg: dict) -> dict:
+    """
+    Compute per-player rank history across rounds.
+
+    Rounds are sourced from lg['blocks'] if defined; otherwise auto-derived
+    from 7-day buckets using match datePlayed values.
+
+    Returns:
+      {
+        "rounds": [{"label": "Round 1", "startDate": "...", "endDate": "..."}],
+        "breakdown": [
+          {
+            "playerId": "...",
+            "playerName": "First Last",
+            "currentRank": 1,
+            "roundRanks": [{"roundIndex": 0, "label": "Round 1", "rank": 2}, ...]
+          }
+        ]
+      }
+    """
+    from datetime import date, timedelta
+
+    matches = list_matches(lg["sport"], lg["id"])
+    accepted = [m for m in matches if m.get("status") == "accepted" and not m.get("isPlayoff")]
+    today_iso = date.today().isoformat()
+
+    # ── Build round definitions ──────────────────────────────────────
+    blocks = lg.get("blocks") or []
+    if blocks:
+        rounds = [
+            {"label": f"Round {i + 1}", "startDate": b["startDate"], "endDate": b["endDate"]}
+            for i, b in enumerate(blocks)
+        ]
+    else:
+        # Auto-derive weekly buckets from actual match dates
+        dates = sorted({m["datePlayed"] for m in accepted if m.get("datePlayed")})
+        if not dates:
+            rounds = []
+        else:
+            start = date.fromisoformat(dates[0])
+            # Align to Monday of that week
+            start = start - timedelta(days=start.weekday())
+            end_limit = date.fromisoformat(dates[-1])
+            rounds = []
+            week_start = start
+            week_num = 1
+            while week_start <= end_limit:
+                week_end = week_start + timedelta(days=6)
+                rounds.append({
+                    "label": f"Week {week_num}",
+                    "startDate": week_start.isoformat(),
+                    "endDate": week_end.isoformat(),
+                })
+                week_start += timedelta(days=7)
+                week_num += 1
+
+    rules = {**default_rules(), **lg.get("rules", {})}
+    scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
+    final_ranking = lg.get("finalRanking", [])
+
+    def _rank_players_from_matches(match_subset: list) -> dict:
+        """Return {playerId: rank} for the given match subset."""
+        stats: dict = {}
+        for p in lg["players"]:
+            stats[p["id"]] = {"points": 0}
+
+        for m in match_subset:
+            sid = m["submitterId"]
+            oid = m["opponentId"]
+            winner = _match_winner_player_id(m)
+            if not winner:
+                score = m.get("score", {})
+                sets = score.get("sets", [])
+                if sets:
+                    scoring_fmt = rules.get("scoringFormat")
+                    computed = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                    winner = sid if computed == "submitter" else oid
+                else:
+                    sub_score = score.get("submitter", 0)
+                    opp_score = score.get("opponent", 0)
+                    winner = sid if sub_score >= opp_score else oid
+            loser = oid if winner == sid else sid
+
+            win_pts = scoring.get("win", 3)
+            loss_pts = scoring.get("loss", 0)
+            upset_bonus = 0
+            ranking_positions = {pid: idx for idx, pid in enumerate(final_ranking)}
+            ws = ranking_positions.get(winner)
+            ls = ranking_positions.get(loser)
+            if ws is not None and ls is not None and ws > ls:
+                upset_bonus = rules.get("upsetBonus", 0)
+
+            if winner in stats:
+                stats[winner]["points"] += win_pts + upset_bonus
+            if loser in stats:
+                stats[loser]["points"] += loss_pts
+
+        tiebreak = final_ranking or [p["id"] for p in lg["players"]]
+        sorted_players = sorted(
+            ((pid, s["points"]) for pid, s in stats.items()),
+            key=lambda x: (-x[1], tiebreak.index(x[0]) if x[0] in tiebreak else 999)
+        )
+        return {pid: idx + 1 for idx, (pid, _) in enumerate(sorted_players)}
+
+    # ── Current standings ────────────────────────────────────────────
+    current_ranks = _rank_players_from_matches(accepted)
+
+    # ── Per-round standings ──────────────────────────────────────────
+    round_rank_maps = []
+    for rnd in rounds:
+        end_date = rnd["endDate"]
+        # For the current ongoing round, use today as the cutoff
+        cutoff = min(end_date, today_iso)
+        subset = [m for m in accepted if (m.get("datePlayed") or "") <= cutoff]
+        round_rank_maps.append(_rank_players_from_matches(subset))
+
+    # ── Assemble breakdown per player ────────────────────────────────
+    breakdown = []
+    for p in lg["players"]:
+        pid = p["id"]
+        name = f"{p.get('firstName', '')} {p.get('lastName', '')}".strip()
+        round_ranks = [
+            {"roundIndex": i, "label": rnd["label"], "rank": round_rank_maps[i].get(pid, len(lg["players"]))}
+            for i, rnd in enumerate(rounds)
+        ]
+        breakdown.append({
+            "playerId": pid,
+            "playerName": name,
+            "currentRank": current_ranks.get(pid, len(lg["players"])),
+            "roundRanks": round_ranks,
+        })
+
+    # Sort by current rank
+    breakdown.sort(key=lambda x: x["currentRank"])
+
+    return {
+        "rounds": rounds,
+        "breakdown": breakdown,
+    }
+
+
+@app.get("/api/leagues/{league_id}/standing-breakdown")
+def api_standing_breakdown(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    return {"leagueId": league_id, **_compute_standing_breakdown(lg)}
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  ADMIN & SUPER ADMIN
 # ═══════════════════════════════════════════════════════════════════
