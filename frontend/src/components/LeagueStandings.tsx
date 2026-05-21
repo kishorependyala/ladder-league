@@ -565,6 +565,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               onSubmitted={() => {
                 setActiveEnterPair(null);
                 setShowSubmitMatch(false);
+                setActiveTab('schedule');
                 loadData();
               }}
             />
@@ -593,6 +594,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               onCancel={() => setShowSubmitDoubles(false)}
               onSubmitted={() => {
                 setShowSubmitDoubles(false);
+                setActiveTab('schedule');
                 loadData();
               }}
             />

@@ -251,8 +251,15 @@ def list_matches(sport: str, league_id: str) -> list:
 
 
 def get_pending_matches_for_user(user_id: str) -> list:
-    """Return all matches awaiting acceptance by this user."""
+    """Return all pending matches relevant to this user (opponent, submitter, or doubles participant)."""
     pending = []
+    seen_ids: set = set()
+
+    def _add(m):
+        if m["id"] not in seen_ids:
+            seen_ids.add(m["id"])
+            pending.append(m)
+
     for league in list_leagues():
         if league.get("status") not in ("active", "playoffs"):
             continue
@@ -261,20 +268,21 @@ def get_pending_matches_for_user(user_id: str) -> list:
                 continue
             if m.get("matchType") == "doubles":
                 all_four = m.get("team1PlayerIds", []) + m.get("team2PlayerIds", [])
-                accepted = m.get("acceptedPlayerIds", [])
-                if user_id in all_four and user_id not in accepted:
-                    pending.append(m)
+                if user_id in all_four:
+                    _add(m)
             else:
-                accepted_sides = m.get("acceptedSides", [])
                 requires_both = m.get("requiresBothAccept", False)
+                accepted_sides = m.get("acceptedSides", [])
+                is_submitter = m.get("submitterId") == user_id
+                is_opponent = m.get("opponentId") == user_id
                 if requires_both:
-                    if m.get("opponentId") == user_id and "opponent" not in accepted_sides:
-                        pending.append(m)
-                    elif m.get("submitterId") == user_id and "submitter" not in accepted_sides:
-                        pending.append(m)
+                    if (is_opponent and "opponent" not in accepted_sides) or \
+                       (is_submitter and "submitter" not in accepted_sides):
+                        _add(m)
                 else:
-                    if m.get("opponentId") == user_id:
-                        pending.append(m)
+                    # Show to both opponent (needs to confirm) and submitter (to track status)
+                    if is_opponent or is_submitter:
+                        _add(m)
     return pending
 
 

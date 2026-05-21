@@ -73,8 +73,10 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
     if (isDoubles(match)) return getDoublesPendingText(match);
     const submitterName = getPlayerName(match, 'submitter');
     const opponentName = getPlayerName(match, 'opponent');
+    const isMySubmission = user.id === match.submitterId && user.id !== match.opponentId;
     if (!match.requiresBothAccept) {
-      return `${submitterName} submitted, waiting for ${opponentName} to confirm`;
+      if (isMySubmission) return `Waiting for ${opponentName} to confirm`;
+      return `${submitterName} submitted · waiting for your confirmation`;
     }
     const sides = match.acceptedSides || [];
     const submitterDone = sides.includes('submitter') ? '✓' : '○';
