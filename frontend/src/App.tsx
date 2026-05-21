@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
-import { getAllLeagues, getMyRoles, getSports, type League, type RolesResponse, type User } from './api';
+import { getAllLeagues, getMyRoles, getPendingMatches, getSports, type League, type Match, type RolesResponse, type User } from './api';
 import AppHeader from './components/AppHeader';
 import AuthFlow from './components/AuthFlow';
 import LeagueAdmin from './components/LeagueAdmin';
@@ -103,6 +103,98 @@ function TabBar({ tabs, active, onChange }: {
   );
 }
 
+// ── Pending actions helpers ─────────────────────────────────────────
+function needsMyAction(match: Match, userId: string): boolean {
+  if (match.matchType === 'doubles') {
+    const all = [...(match.team1PlayerIds ?? []), ...(match.team2PlayerIds ?? [])];
+    return all.includes(userId) && !(match.acceptedPlayerIds ?? []).includes(userId);
+  }
+  if (match.requiresBothAccept) {
+    const sides = match.acceptedSides ?? [];
+    if (match.submitterId === userId) return !sides.includes('submitter');
+    if (match.opponentId === userId) return !sides.includes('opponent');
+  }
+  return match.opponentId === userId;
+}
+
+function PendingActionsBanner({
+  user, allLeagues, onOpenLeague, onDismiss,
+}: { user: User; allLeagues: League[]; onOpenLeague: (l: League) => void; onDismiss: () => void }) {
+  const [actionable, setActionable] = useState<Match[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    getPendingMatches(user.id)
+      .then(matches => {
+        setActionable((Array.isArray(matches) ? matches : []).filter(m => needsMyAction(m, user.id)));
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [user.id]);
+
+  if (!loaded || actionable.length === 0) return null;
+
+  // Group by league
+  const byLeague: Record<string, { league: League | undefined; matches: Match[] }> = {};
+  for (const m of actionable) {
+    if (!byLeague[m.leagueId]) {
+      byLeague[m.leagueId] = { league: allLeagues.find(l => l.id === m.leagueId), matches: [] };
+    }
+    byLeague[m.leagueId].matches.push(m);
+  }
+
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+      border: '2px solid #f59e0b',
+      borderRadius: '1rem',
+      padding: '1rem 1.25rem',
+      display: 'grid',
+      gap: '0.75rem',
+      boxShadow: '0 4px 16px rgba(245,158,11,0.18)',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '1.4rem' }}>⏳</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 700, color: '#78350f', fontSize: '1rem' }}>
+              {actionable.length} match{actionable.length > 1 ? 'es' : ''} waiting for your confirmation
+            </p>
+            <p style={{ margin: '0.15rem 0 0', fontSize: '0.82rem', color: '#92400e' }}>
+              Tap a league below to review and confirm
+            </p>
+          </div>
+        </div>
+        <button onClick={onDismiss} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#92400e', lineHeight: 1, padding: '0.1rem' }} title="Dismiss">✕</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+        {Object.entries(byLeague).map(([leagueId, { league, matches }]) => (
+          <button
+            key={leagueId}
+            onClick={() => league && onOpenLeague(league)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: '#fff', border: '2px solid #f59e0b',
+              borderRadius: '0.75rem', padding: '0.5rem 0.9rem',
+              cursor: 'pointer', fontWeight: 600, color: '#78350f',
+              fontSize: '0.88rem', boxShadow: '0 2px 8px rgba(245,158,11,0.12)',
+            }}
+          >
+            <span style={{
+              background: '#f59e0b', color: '#fff',
+              borderRadius: '999px', fontSize: '0.72rem',
+              fontWeight: 700, padding: '0.1rem 0.45rem', minWidth: '1.4rem', textAlign: 'center',
+            }}>{matches.length}</span>
+            {league?.name ?? leagueId}
+            {matches.some(m => m.matchType === 'doubles') && ' 🏸'}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const SESSION_KEY = 'ladder_league_user';
 
 function App() {
@@ -120,6 +212,7 @@ function App() {
   const [sports, setSports] = useState<any[]>([]);
   const [allLeagues, setAllLeagues] = useState<League[]>([]);
   const [showProfile, setShowProfile] = useState(false);
+  const [showPendingBanner, setShowPendingBanner] = useState(true);
   const { copy, copiedUrl } = useCopyLink();
 
   // ── Sync URL hash ↔ selectedLeague ────────────────────────────────
@@ -163,11 +256,11 @@ function App() {
 
   const handleAuth = (u: User) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify(u));
-    setUser(u); setImpersonating(null); setTab('home'); setSelectedLeague(null);
+    setUser(u); setImpersonating(null); setTab('home'); setSelectedLeague(null); setShowPendingBanner(true);
   };
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
-    setUser(null); setImpersonating(null); setTab('home'); setSelectedLeague(null);
+    setUser(null); setImpersonating(null); setTab('home'); setSelectedLeague(null); setShowPendingBanner(true);
   };
   const handleHome = () => { setTab('home'); setSelectedLeague(null); };
 
@@ -277,6 +370,14 @@ function App() {
           <button onClick={handleReturnToAccount} style={{ ...S.infoBox, border: '1px solid #fdba74', cursor: 'pointer', textAlign: 'left', width: '100%' }}>
             👤 Impersonating <strong>{user.firstName} {user.lastName}</strong> — click to return to your account
           </button>
+        )}
+        {showPendingBanner && (
+          <PendingActionsBanner
+            user={user}
+            allLeagues={allLeagues}
+            onOpenLeague={league => { setSelectedLeague(league); setShowPendingBanner(false); }}
+            onDismiss={() => setShowPendingBanner(false)}
+          />
         )}
         {selectedLeague && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
