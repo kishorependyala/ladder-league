@@ -146,7 +146,8 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
+  const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none');
+  const [activeTab, setActiveTab] = useState<StandingsTab>(isDoubles ? 'doubles' : 'standings');
 
   useEffect(() => {
     setCurrentLeague(league);
@@ -345,13 +346,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid #fed7aa', overflowX: 'auto' }}>
           {([
-            ['standings', '📊 Standings'],
+            ...(!isDoubles ? [['standings', '📊 Standings'], ['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
-            ['breakdown', '📈 Standings Breakdown'],
             ['rounds', '📅 Rounds'],
             ['schedule', '📋 Schedule & Pending'],
             ['rules', '📖 League Rules'],
-            ...(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none' ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
+            ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
             <button
               key={tab}
