@@ -322,12 +322,14 @@ function LeagueCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isDoublesAdhoc = league.rules?.doublesMode === 'adhoc';
+
   const handleProgress = () => {
     const key = `progress-${league.id}`;
     act(key, async () => {
-      if (league.status === 'draft') {
+      if (!isDoublesAdhoc && league.status === 'draft') {
         const r = await startRanking(league.id, user.phone); return r.league;
-      } else if (league.status === 'ranking') {
+      } else if (!isDoublesAdhoc && league.status === 'ranking') {
         const r = await finalizeRanking(league.id, user.phone); return r.league;
       }
       const r = await startLeague(league.id, user.phone); return r.league;
@@ -386,17 +388,22 @@ function LeagueCard({
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
           <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
-          {league.status === 'draft' && (
+          {league.status === 'draft' && !isDoublesAdhoc && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start ranking
             </button>
           )}
-          {league.status === 'ranking' && (
+          {(league.status === 'draft' && isDoublesAdhoc) && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
+              Start league
+            </button>
+          )}
+          {league.status === 'ranking' && !isDoublesAdhoc && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Finalize ranking
             </button>
           )}
-          {league.status === 'ranking' && (
+          {league.status === 'ranking' && !isDoublesAdhoc && (
             <button
               style={{ ...S.smallOutlineBtn, color: copied ? '#16a34a' : undefined, borderColor: copied ? '#86efac' : undefined }}
               onClick={handleCopyReminder}
@@ -404,7 +411,7 @@ function LeagueCard({
               {copied ? '✓ Copied!' : '📋 Copy reminder'}
             </button>
           )}
-          {['draft', 'ranking', 'ranked'].includes(league.status) && (
+          {['draft', 'ranking', 'ranked'].includes(league.status) && !isDoublesAdhoc && (
             <button
               style={S.smallOutlineBtn}
               disabled={!!busyId}

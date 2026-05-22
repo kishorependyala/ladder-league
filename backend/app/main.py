@@ -620,6 +620,8 @@ def api_start_ranking(league_id: str, data: dict = Body(...)):
     requester = get_user_by_phone(phone)
     if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
         return {"success": False, "message": "Not authorized"}
+    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+        return {"success": False, "message": "Doubles ad-hoc leagues skip the ranking phase — start the league directly"}
     if lg["status"] != "draft":
         return {"success": False, "message": "League must be in draft status"}
     lg["status"] = "ranking"
@@ -637,6 +639,8 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
     lg = get_league_by_id(league_id)
     if not lg:
         return {"success": False, "message": "League not found"}
+    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+        return {"success": False, "message": "Doubles ad-hoc leagues do not use a ranking phase"}
     if lg["status"] not in ("draft", "ranking", "ranked"):
         return {"success": False, "message": "League is not in a ranking phase"}
     league_player = find_league_player(lg, user)
@@ -670,6 +674,8 @@ def api_finalize_ranking(league_id: str, data: dict = Body(...)):
     requester = get_user_by_phone(phone)
     if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
         return {"success": False, "message": "Not authorized"}
+    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+        return {"success": False, "message": "Doubles ad-hoc leagues do not use a ranking phase"}
     if lg["status"] not in ("ranking", "ranked"):
         return {"success": False, "message": "League must be in ranking/ranked phase"}
 

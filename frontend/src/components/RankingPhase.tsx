@@ -171,6 +171,35 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     setLoading(false);
   };
 
+  // ── Doubles adhoc: no ranking phase ─────────────────────────────
+  if (league.rules?.doublesMode === 'adhoc') {
+    return (
+      <div style={{ display: 'grid', gap: '1.25rem' }}>
+        <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={sectionTitle}>{league.name}</h2>
+              <p style={{ ...mutedText, marginTop: '0.3rem' }}>{league.sport} · {league.players.length} players</p>
+            </div>
+            <span style={statusPill(league.status)}>{league.status}</span>
+          </div>
+          <LeagueRulesSummary league={league} compact />
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', padding: '0.9rem 1rem', fontSize: '0.88rem', color: '#166534' }}>
+            🏸 <strong>Doubles ad-hoc league</strong> — no ranking phase needed. All players start with no rank.
+            The admin can start the league whenever everyone is ready.
+          </div>
+          {error && <div style={S.errorBox}>{error}</div>}
+          {message && <div style={S.infoBox}>{message}</div>}
+          {isAdmin && (
+            <button style={S.smallBtn} disabled={loading} onClick={handleStartLeague}>
+              {loading ? 'Starting…' : '▶ Start league'}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gap: '1.25rem' }}>
       {/* Header card */}
