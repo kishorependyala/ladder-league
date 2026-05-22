@@ -1280,7 +1280,87 @@ def api_delete_doubles_pair(league_id: str, pair_id: str, phone: str = Query(...
     return {"success": True, "league": lg}
 
 
-# ── Doubles standings (fixed-pairs mode) ──────────────────────────
+# ── Doubles standings ─────────────────────────────────────────────
+
+def _get_player_first(lg: dict, pid: str) -> str:
+    for p in lg.get("players", []):
+        if p.get("id") == pid:
+            return (p.get("firstName") or p.get("phone") or pid).split()[0]
+    return pid[:6]
+
+
+def _compute_adhoc_doubles_standings(lg: dict) -> dict:
+    """Compute dynamic pair standings for an ad-hoc doubles league from match history."""
+    matches = list_matches(lg["sport"], lg["id"])
+    rules = {**default_rules(), **lg.get("rules", {})}
+    scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
+
+    stats: dict = {}  # key: "p1id|p2id" (player IDs sorted)
+
+    def pair_key(a: str, b: str) -> str:
+        return "|".join(sorted([a, b]))
+
+    for m in matches:
+        if m.get("status") != "accepted" or m.get("matchType") != "doubles":
+            continue
+        t1 = m.get("team1PlayerIds", [])
+        t2 = m.get("team2PlayerIds", [])
+        if len(t1) != 2 or len(t2) != 2:
+            continue
+
+        winner_team = m.get("winnerTeam")
+        if not winner_team:
+            score = m.get("score", {})
+            sets = score.get("sets", [])
+            scoring_fmt = rules.get("scoringFormat")
+            if sets:
+                raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+            else:
+                sub_score = score.get("submitter", 0)
+                opp_score = score.get("opponent", 0)
+                winner_team = "team1" if sub_score >= opp_score else "team2"
+        if not winner_team:
+            continue
+
+        win_pts = scoring.get("win", 3)
+        loss_pts = scoring.get("loss", 0)
+        submitted_at = m.get("submittedAt") or m.get("createdAt")
+
+        for team_ids, opp_ids, is_winner in [(t1, t2, winner_team == "team1"), (t2, t1, winner_team == "team2")]:
+            key = pair_key(team_ids[0], team_ids[1])
+            opp_key = pair_key(opp_ids[0], opp_ids[1])
+            if key not in stats:
+                p1, p2 = sorted(team_ids)
+                stats[key] = {
+                    "pair": {
+                        "id": key,
+                        "player1Id": p1,
+                        "player2Id": p2,
+                        "name": f"{_get_player_first(lg, p1)}/{_get_player_first(lg, p2)}",
+                    },
+                    "wins": 0, "losses": 0, "points": 0, "rank": 0, "matchLog": [],
+                }
+            if is_winner:
+                stats[key]["wins"] += 1
+                stats[key]["points"] += win_pts
+                stats[key]["matchLog"].append({
+                    "matchId": m["id"], "opponentPairId": opp_key,
+                    "result": "win", "basePoints": win_pts, "score": m.get("score"), "submittedAt": submitted_at,
+                })
+            else:
+                stats[key]["losses"] += 1
+                stats[key]["points"] += loss_pts
+                stats[key]["matchLog"].append({
+                    "matchId": m["id"], "opponentPairId": opp_key,
+                    "result": "loss", "basePoints": loss_pts, "score": m.get("score"), "submittedAt": submitted_at,
+                })
+
+    sorted_stats = sorted(stats.values(), key=lambda x: (-x["points"], -x["wins"]))
+    for i, s in enumerate(sorted_stats):
+        s["rank"] = i + 1
+    return {"leagueId": lg["id"], "standings": sorted_stats}
+
 
 def _compute_doubles_standings(lg: dict) -> dict:
     """Compute pair standings for a fixed-pairs league."""
@@ -1356,9 +1436,95 @@ def api_doubles_standings(league_id: str):
     if not lg:
         return {"success": False, "message": "League not found"}
     doubles_mode = lg.get("rules", {}).get("doublesMode", "none")
-    if doubles_mode != "fixed_pairs":
-        return {"success": False, "message": "Doubles standings are only available in fixed-pairs mode"}
-    return _compute_doubles_standings(lg)
+    if doubles_mode == "fixed_pairs":
+        return _compute_doubles_standings(lg)
+    if doubles_mode == "adhoc":
+        return _compute_adhoc_doubles_standings(lg)
+    return {"success": False, "message": "Doubles standings not available for this league type"}
+
+
+def _compute_doubles_final_ranking(lg: dict) -> list:
+    """Average-position ranking across all pair ranking votes."""
+    pair_ids = [p["id"] for p in lg.get("doublesPairs", [])]
+    pair_id_set = set(pair_ids)
+    n = len(pair_ids)
+    submissions = lg.get("doublesStackRanks", {})
+    scores: dict = {pid: 0.0 for pid in pair_ids}
+    voters = 0
+    for voter_id, ranked_list in submissions.items():
+        # Only count votes from current league players
+        if not any(p["id"] == voter_id for p in lg.get("players", [])):
+            continue
+        voters += 1
+        for pid in pair_ids:
+            pos = (ranked_list.index(pid) + 1) if pid in ranked_list else n + 1
+            scores[pid] += pos
+    if voters == 0:
+        return pair_ids
+    return sorted(pair_ids, key=lambda pid: scores[pid])
+
+
+@app.get("/api/leagues/{league_id}/doubles/ranking")
+def api_get_doubles_ranking(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if lg.get("rules", {}).get("doublesMode") != "fixed_pairs":
+        return {"success": False, "message": "Pair ranking is only for fixed-pairs leagues"}
+    pairs = lg.get("doublesPairs", [])
+    stack_ranks = lg.get("doublesStackRanks", {})
+    final_ranking = lg.get("doublesFinalRanking", [])
+    # Count only current-player votes
+    player_ids = {p["id"] for p in lg.get("players", [])}
+    submitted_count = sum(1 for vid in stack_ranks if vid in player_ids)
+    return {
+        "success": True,
+        "pairs": pairs,
+        "stackRanks": stack_ranks,
+        "finalRanking": final_ranking,
+        "submittedCount": submitted_count,
+        "totalPlayers": len(lg.get("players", [])),
+    }
+
+
+@app.post("/api/leagues/{league_id}/doubles/ranking/submit")
+def api_submit_doubles_ranking(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    ranked_pair_ids = data.get("rankedPairIds", [])
+    user = get_user_by_phone(phone)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if lg.get("rules", {}).get("doublesMode") != "fixed_pairs":
+        return {"success": False, "message": "Pair ranking is only for fixed-pairs leagues"}
+    league_player = find_league_player(lg, user)
+    if not league_player:
+        return {"success": False, "message": "You are not in this league"}
+    lg.setdefault("doublesStackRanks", {})[league_player["id"]] = ranked_pair_ids
+    lg["doublesFinalRanking"] = _compute_doubles_final_ranking(lg)
+    save_league(lg)
+    player_ids = {p["id"] for p in lg.get("players", [])}
+    submitted_count = sum(1 for vid in lg["doublesStackRanks"] if vid in player_ids)
+    return {"success": True, "league": lg, "submittedCount": submitted_count, "totalPlayers": len(lg["players"])}
+
+
+@app.post("/api/leagues/{league_id}/doubles/ranking/finalize")
+def api_finalize_doubles_ranking(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    manual_order = data.get("rankedPairIds")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+    if lg.get("rules", {}).get("doublesMode") != "fixed_pairs":
+        return {"success": False, "message": "Pair ranking is only for fixed-pairs leagues"}
+    lg["doublesFinalRanking"] = manual_order if manual_order else _compute_doubles_final_ranking(lg)
+    save_league(lg)
+    return {"success": True, "league": lg}
 
 
 @app.get("/api/matches/pending")

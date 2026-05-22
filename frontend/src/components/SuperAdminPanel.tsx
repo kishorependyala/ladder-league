@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, loginAs, removePlayer, renameLeague, signup, SPORT_SCORING, type League, type RolesResponse, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, addSuperAdmin, createLeague, deleteLeague, deleteUser, getAllLeagues, getAllUsers, getDisplayName, getMyRoles, getSports, leagueTypeLabel, loginAs, removePlayer, renameLeague, signup, SPORT_SCORING, type League, type RolesResponse, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 import DataBrowser from './DataBrowser';

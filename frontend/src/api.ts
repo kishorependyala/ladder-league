@@ -126,6 +126,8 @@ export interface League {
   playoffs?: Playoffs;
   blocks?: LeagueBlock[];
   doublesPairs?: DoublesPair[];
+  doublesStackRanks?: Record<string, string[]>;
+  doublesFinalRanking?: string[];
 }
 
 export interface DoublesPair {
@@ -257,6 +259,13 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+export function leagueTypeLabel(rules: LeagueRules | undefined): string {
+  const mode = rules?.doublesMode ?? 'none';
+  if (mode === 'adhoc') return 'Doubles · Ad-hoc';
+  if (mode === 'fixed_pairs') return 'Doubles · Fixed';
+  return 'Singles';
 }
 
 export function getDisplayName(person?: Partial<User | Player> | null): string {
@@ -662,4 +671,26 @@ export function deleteDoublesPair(leagueId: string, pairId: string, phone: strin
 
 export function getDoublesStandings(leagueId: string): Promise<DoublesStandingsResponse> {
   return get(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/standings`);
+}
+
+export interface DoublesRankingResponse {
+  success: boolean;
+  pairs: DoublesPair[];
+  stackRanks: Record<string, string[]>;
+  finalRanking: string[];
+  submittedCount: number;
+  totalPlayers: number;
+  message?: string;
+}
+
+export function getDoublesRanking(leagueId: string): Promise<DoublesRankingResponse> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/ranking`);
+}
+
+export function submitDoublesRanking(leagueId: string, phone: string, rankedPairIds: string[]): Promise<{ success: boolean; league?: League; submittedCount?: number; totalPlayers?: number; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/ranking/submit`, { phone, rankedPairIds });
+}
+
+export function finalizeDoublesRanking(leagueId: string, phone: string, rankedPairIds?: string[]): Promise<{ success: boolean; league?: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/ranking/finalize`, { phone, ...(rankedPairIds ? { rankedPairIds } : {}) });
 }

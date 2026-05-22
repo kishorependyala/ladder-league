@@ -270,14 +270,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             <span style={statusPill(currentLeague.status)}>{currentLeague.status}</span>
             {(currentLeague.status === 'active' || currentLeague.status === 'playoffs') && (
               <>
-                <button style={S.smallBtn} onClick={() => setShowSubmitMatch(true)}>
+                <button
+                  style={S.smallBtn}
+                  onClick={() => {
+                    const isDoubles = currentLeague.rules?.doublesMode === 'adhoc' || currentLeague.rules?.doublesMode === 'fixed_pairs';
+                    if (isDoubles) setShowSubmitDoubles(true); else setShowSubmitMatch(true);
+                  }}
+                >
                   ➕ Add Score
                 </button>
-                {(currentLeague.rules?.doublesMode === 'adhoc' || currentLeague.rules?.doublesMode === 'fixed_pairs') && (
-                  <button style={{ ...S.smallBtn, background: '#e0f2fe', color: '#0369a1', border: '1px solid #7dd3fc' }} onClick={() => setShowSubmitDoubles(true)}>
-                    🏸 Add Doubles
-                  </button>
-                )}
                 <button
                   style={{ ...S.smallBtn, background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', fontSize: '1.2rem', padding: '0.3rem 0.65rem' }}
                   title="Coin flip"
