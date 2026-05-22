@@ -78,6 +78,7 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
 
   const [opponentId, setOpponentId] = useState(fixedOpponent?.id || '');
   const [sets, setSets] = useState<Array<SetScore | null>>([null]);
+  const [forceDone, setForceDone] = useState(false);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -101,8 +102,9 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
   const matchWinner: 'me' | 'opp' | null = useMemo(() => {
     if (meWins >= cfg.wins_needed) return 'me';
     if (oppWins >= cfg.wins_needed) return 'opp';
+    if (forceDone && completeSets.length > 0) return meWins >= oppWins ? 'me' : 'opp';
     return null;
-  }, [cfg.wins_needed, meWins, oppWins]);
+  }, [cfg.wins_needed, meWins, oppWins, forceDone, completeSets.length]);
 
   const handleSetChange = (idx: number, val: string) => {
     let next: Array<SetScore | null>;
@@ -139,7 +141,7 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
       return;
     }
     if (!matchWinner) {
-      setError('Complete the scores until a winner is determined.');
+      setError('Enter at least one set score, or mark the match as finished.');
       return;
     }
     setLoading(true);
@@ -248,6 +250,15 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
               </span>
             )}
           </div>
+        )}
+
+        {/* End match early option — shown when sets entered but no winner yet */}
+        {completeSets.length > 0 && !matchWinner && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.5rem 0.75rem', background: forceDone ? '#f0fdf4' : '#f9fafb', border: `1px solid ${forceDone ? '#86efac' : '#e5e7eb'}`, borderRadius: '0.6rem' }}>
+            <input type="checkbox" checked={forceDone} onChange={e => setForceDone(e.target.checked)} style={{ width: '1rem', height: '1rem', accentColor: '#16a34a' }} />
+            <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#374151' }}>Match finished here</span>
+            <span style={{ ...mutedText, fontSize: '0.78rem' }}>— e.g. one-set format, retirement, or mutual agreement</span>
+          </label>
         )}
 
         <p style={{ ...mutedText, fontSize: '0.78rem' }}>
