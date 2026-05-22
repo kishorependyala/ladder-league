@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type User } from '../api';
+import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, getSports, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -584,10 +584,13 @@ function LeagueCard({
 
 function LeagueAdmin({ user, leagues, onOpenLeague, onLeagueChange, onRefresh }: LeagueAdminProps) {
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [sports, setSports] = useState<Sport[]>([]);
+  const [activeSportFilter, setActiveSportFilter] = useState('');
   const [localLeagues, setLocalLeagues] = useState<League[]>(leagues);
 
   useEffect(() => { setLocalLeagues(leagues); }, [leagues]);
   useEffect(() => { getAllUsers().then(u => setAllUsers(Array.isArray(u) ? u : [])); }, []);
+  useEffect(() => { getSports().then(s => setSports(Array.isArray(s) ? s : [])); }, []);
 
   const handleLeagueUpdate = (updated: League) => {
     setLocalLeagues(prev => prev.map(l => l.id === updated.id ? updated : l));
@@ -595,12 +598,43 @@ function LeagueAdmin({ user, leagues, onOpenLeague, onLeagueChange, onRefresh }:
     onRefresh();
   };
 
+  const presentSports = useMemo(
+    () => sports.filter(s => localLeagues.some(l => l.sport === s.id)),
+    [sports, localLeagues],
+  );
+
+  const displayedLeagues = useMemo(
+    () => activeSportFilter ? localLeagues.filter(l => l.sport === activeSportFilter) : localLeagues,
+    [localLeagues, activeSportFilter],
+  );
+
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
-      <h2 style={sectionTitle}>League admin</h2>
-      {localLeagues.length === 0
-        ? <p style={mutedText}>You are not managing any leagues yet. A super admin can create leagues and assign you as admin.</p>
-        : localLeagues.map(league => (
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <h2 style={sectionTitle}>League admin</h2>
+        {presentSports.length > 1 && (
+          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => setActiveSportFilter('')}
+              style={{ padding: '0.25rem 0.6rem', borderRadius: '99px', border: '1.5px solid', borderColor: !activeSportFilter ? '#f59e0b' : '#e5e7eb', background: !activeSportFilter ? '#fef3c7' : '#f9fafb', color: !activeSportFilter ? '#92400e' : '#6b7280', fontSize: '0.78rem', fontWeight: !activeSportFilter ? 700 : 500, cursor: 'pointer' }}
+            >
+              All
+            </button>
+            {presentSports.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setActiveSportFilter(activeSportFilter === s.id ? '' : s.id)}
+                style={{ padding: '0.25rem 0.6rem', borderRadius: '99px', border: '1.5px solid', borderColor: activeSportFilter === s.id ? '#f59e0b' : '#e5e7eb', background: activeSportFilter === s.id ? '#fef3c7' : '#f9fafb', color: activeSportFilter === s.id ? '#92400e' : '#6b7280', fontSize: '0.78rem', fontWeight: activeSportFilter === s.id ? 700 : 500, cursor: 'pointer' }}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {displayedLeagues.length === 0
+        ? <p style={mutedText}>{localLeagues.length === 0 ? 'You are not managing any leagues yet. A super admin can create leagues and assign you as admin.' : `No ${sports.find(s => s.id === activeSportFilter)?.label ?? activeSportFilter} leagues.`}</p>
+        : displayedLeagues.map(league => (
           <LeagueCard
             key={league.id}
             league={league}
