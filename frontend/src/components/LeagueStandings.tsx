@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
+import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
 import DoublesStandings from './DoublesStandings';
 import MatchGrid from './MatchGrid';
@@ -264,7 +264,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
             <h2 style={sectionTitle}>{currentLeague.name}</h2>
-            <p style={{ ...mutedText, marginTop: '0.3rem' }}>{currentLeague.sport} league</p>
+            <p style={{ ...mutedText, marginTop: '0.3rem' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(currentLeague.rules)}</span>
+              <span style={{ margin: '0 0.3rem', color: '#d1d5db' }}>·</span>
+              {currentLeague.sport} league
+            </p>
           </div>
           <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={statusPill(currentLeague.status)}>{currentLeague.status}</span>

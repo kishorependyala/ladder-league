@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { finalizeRanking, getDisplayName, getMyRoles, isLeagueJoinable, isLeagueMember, joinLeague, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
+import { finalizeRanking, getDisplayName, getMyRoles, isLeagueJoinable, isLeagueMember, joinLeague, leagueTypeLabel, startLeague, submitRanking, type League, type Player, type RolesResponse, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesSummary from './LeagueRulesSummary';
 
@@ -179,7 +179,11 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <h2 style={sectionTitle}>{league.name}</h2>
-              <p style={{ ...mutedText, marginTop: '0.3rem' }}>{league.sport} · {league.players.length} players</p>
+              <p style={{ ...mutedText, marginTop: '0.3rem' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules)}</span>
+                <span style={{ margin: '0 0.3rem', color: '#d1d5db' }}>·</span>
+                {league.sport} · {league.players.length} players
+              </p>
             </div>
             <span style={statusPill(league.status)}>{league.status}</span>
           </div>
@@ -207,7 +211,11 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
             <h2 style={sectionTitle}>{league.name}</h2>
-            <p style={{ ...mutedText, marginTop: '0.3rem' }}>{league.sport} · {league.players.length} players</p>
+            <p style={{ ...mutedText, marginTop: '0.3rem' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules)}</span>
+              <span style={{ margin: '0 0.3rem', color: '#d1d5db' }}>·</span>
+              {league.sport} · {league.players.length} players
+            </p>
           </div>
           <span style={statusPill(league.status)}>{league.status}</span>
         </div>
