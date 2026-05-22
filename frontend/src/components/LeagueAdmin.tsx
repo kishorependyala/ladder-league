@@ -202,13 +202,18 @@ function LeagueCard({
   allUsers,
   onLeagueUpdate,
   onOpenLeague,
+  initiallyExpanded = false,
+  canCollapse = true,
 }: {
   league: League;
   user: User;
   allUsers: User[];
   onLeagueUpdate: (l: League) => void;
   onOpenLeague: (l: League) => void;
+  initiallyExpanded?: boolean;
+  canCollapse?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -257,6 +262,7 @@ function LeagueCard({
   };
 
   const handleMakeAdmin = (p: Player) => {
+    if (!window.confirm(`Make ${p.firstName} ${p.lastName} an admin of "${league.name}"?`)) return;
     act(`admin-${p.id}`, async () => {
       const res = await addAdmin(league.id, user.phone, p.phone);
       if (!res.success) throw new Error((res as any).message);
@@ -349,6 +355,31 @@ function LeagueCard({
     setEditingName(false);
   };
 
+  // ── Collapsed (list) view ─────────────────────────────────────────
+  if (!expanded) {
+    return (
+      <div style={{ border: '1px solid #fed7aa', borderRadius: '1rem', padding: '0.9rem 1.1rem', background: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <strong style={{ color: '#78350f', fontSize: '1.05rem' }}>{league.name}</strong>
+            <span style={statusPill(league.status)}>{league.status}</span>
+            <span style={{ fontSize: '0.82rem', color: '#92400e', fontWeight: 600 }}>{league.sport}</span>
+          </div>
+          <p style={{ ...mutedText, marginTop: '0.2rem', fontSize: '0.85rem' }}>
+            {league.players.length} players
+            {league.startDate && <> · {league.startDate}</>}
+            {league.endDate && <> → {league.endDate}</>}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
+          <button style={S.smallBtn} onClick={() => setExpanded(true)}>⚙️ Manage</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Expanded (manage) view ────────────────────────────────────────
   return (
     <div style={{ border: '1px solid #fed7aa', borderRadius: '1rem', padding: '1.1rem', background: '#fff', display: 'grid', gap: '1rem' }}>
       {/* header */}
@@ -386,7 +417,10 @@ function LeagueCard({
             {league.endDate && <> &nbsp;→&nbsp; {league.endDate}</>}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {canCollapse && (
+            <button style={{ ...S.smallOutlineBtn, fontSize: '0.8rem' }} onClick={() => setExpanded(false)}>✕ Close</button>
+          )}
           <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
           {league.status === 'draft' && !isDoublesAdhoc && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
@@ -585,7 +619,7 @@ function LeagueCard({
 function LeagueAdmin({ user, leagues, onOpenLeague, onLeagueChange, onRefresh }: LeagueAdminProps) {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [sports, setSports] = useState<Sport[]>([]);
-  const [activeSportFilter, setActiveSportFilter] = useState('');
+  const [activeSportFilter, setActiveSportFilter] = useState(user.favoriteSport ?? '');
   const [localLeagues, setLocalLeagues] = useState<League[]>(leagues);
 
   useEffect(() => { setLocalLeagues(leagues); }, [leagues]);
@@ -642,6 +676,8 @@ function LeagueAdmin({ user, leagues, onOpenLeague, onLeagueChange, onRefresh }:
             allUsers={allUsers}
             onLeagueUpdate={handleLeagueUpdate}
             onOpenLeague={onOpenLeague}
+            initiallyExpanded={localLeagues.length === 1}
+            canCollapse={localLeagues.length > 1}
           />
         ))
       }
