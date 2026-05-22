@@ -98,6 +98,7 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
   };
 
   const removeBlock = (i: number) => {
+    if (!window.confirm('Remove this round from the schedule?')) return;
     setBlocks(prev => prev.filter((_, idx) => idx !== i).map((b, idx) => ({ ...b, index: idx })));
   };
 
