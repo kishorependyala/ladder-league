@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { findLeaguePlayer, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
+import { findLeaguePlayer, getDisplayName, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
 import DoublesStandings from './DoublesStandings';
 import MatchGrid from './MatchGrid';
@@ -412,6 +412,65 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               <p style={mutedText}>No matches yet.</p>
             ) : (
               acceptedResults.map(({ match, winnerId, isUpset, winnerLog, loserLog }) => {
+                const isDoubleMatch = match.matchType === 'doubles';
+
+                // ── Doubles match ──────────────────────────────────
+                if (isDoubleMatch) {
+                  const t1ids = match.team1PlayerIds ?? [];
+                  const t2ids = match.team2PlayerIds ?? [];
+                  const pName = (id: string) => {
+                    const p = currentLeague.players.find(pl => pl.id === id);
+                    return p ? getDisplayName(p) : id;
+                  };
+                  const pair1 = currentLeague.doublesPairs?.find(p => p.id === match.pair1Id);
+                  const pair2 = currentLeague.doublesPairs?.find(p => p.id === match.pair2Id);
+                  const t1Label = pair1?.name ?? t1ids.map(pName).join(' / ');
+                  const t2Label = pair2?.name ?? t2ids.map(pName).join(' / ');
+                  const wt = match.winnerTeam;
+                  const t1Won = wt === 'team1';
+                  const t2Won = wt === 'team2';
+                  return (
+                    <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem', background: '#fffbeb', display: 'grid', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'grid', gap: '0.3rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, color: t1Won ? '#166534' : '#78350f' }}>{t1Label}</span>
+                            {t1ids.length > 0 && !pair1 && (
+                              <span style={{ ...mutedText, fontSize: '0.78rem' }}>({t1ids.map(pName).join(' & ')})</span>
+                            )}
+                            {pair1 && (
+                              <span style={{ ...mutedText, fontSize: '0.78rem' }}>{t1ids.map(pName).join(' & ')}</span>
+                            )}
+                          </div>
+                          <span style={{ ...mutedText, fontSize: '0.8rem', fontWeight: 600 }}>vs</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700, color: t2Won ? '#166534' : '#78350f' }}>{t2Label}</span>
+                            {t2ids.length > 0 && !pair2 && (
+                              <span style={{ ...mutedText, fontSize: '0.78rem' }}>({t2ids.map(pName).join(' & ')})</span>
+                            )}
+                            {pair2 && (
+                              <span style={{ ...mutedText, fontSize: '0.78rem' }}>{t2ids.map(pName).join(' & ')}</span>
+                            )}
+                          </div>
+                          <p style={{ ...mutedText, marginTop: '0.1rem' }}>{formatScore(match)}</p>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <span style={{ ...mutedText, fontSize: '0.82rem' }}>
+                            {match.submittedAt ? new Date(match.submittedAt).toLocaleString() : match.createdAt ? new Date(match.createdAt).toLocaleString() : ''}
+                          </span>
+                        </div>
+                      </div>
+                      {wt && (
+                        <div style={S.infoBox}>
+                          <strong>Winner:</strong> {t1Won ? t1Label : t2Label}
+                        </div>
+                      )}
+                      {match.score?.details && <p style={mutedText}>{match.score.details}</p>}
+                    </div>
+                  );
+                }
+
+                // ── Singles match ──────────────────────────────────
                 const submitterName = findLeaguePlayer(currentLeague, match.submitterId, match.submitter);
                 const opponentName = findLeaguePlayer(currentLeague, match.opponentId, match.opponent);
                 const winnerName = winnerId === match.submitterId ? submitterName : opponentName;
