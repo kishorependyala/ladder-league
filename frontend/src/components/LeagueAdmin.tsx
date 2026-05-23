@@ -428,11 +428,18 @@ function LeagueCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const isDoublesAdhoc = league.rules?.doublesMode === 'adhoc';
+  const isTeamLeague = league.leagueType === 'team';
+  const isDoublesAdhoc = league.rules?.doublesMode === 'adhoc' && !isTeamLeague;
+  const teamPhase = league.phase ?? '';
 
   const handleProgress = () => {
     const key = `progress-${league.id}`;
     act(key, async () => {
+      if (isTeamLeague) {
+        if (league.status === 'draft') { const r = await startRanking(league.id, user.phone); return r.league; }
+        if (league.status === 'ranking') { const r = await finalizeRanking(league.id, user.phone); return r.league; }
+        const r = await startLeague(league.id, user.phone); return r.league;
+      }
       if (!isDoublesAdhoc && league.status === 'draft') {
         const r = await startRanking(league.id, user.phone); return r.league;
       } else if (!isDoublesAdhoc && league.status === 'ranking') {
@@ -524,22 +531,40 @@ function LeagueCard({
             <button style={{ ...S.smallOutlineBtn, fontSize: '0.8rem' }} onClick={() => setExpanded(false)}>✕ Close</button>
           )}
           <button style={S.smallOutlineBtn} onClick={() => onOpenLeague(league)}>Open</button>
-          {league.status === 'draft' && !isDoublesAdhoc && (
+
+          {/* Team League flow buttons */}
+          {isTeamLeague && league.status === 'draft' && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>Start ranking</button>
+          )}
+          {isTeamLeague && league.status === 'ranking' && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>Finalize ranking</button>
+          )}
+          {isTeamLeague && league.status === 'ranked' && teamPhase === 'team_formation' && (
+            <button style={{ ...S.smallBtn, background: '#16a34a' }} disabled={!!busyId} onClick={() => onOpenLeague(league)}>
+              🏆 Form teams →
+            </button>
+          )}
+          {isTeamLeague && league.status === 'ranked' && teamPhase === 'team_league' && (
+            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>▶ Start league</button>
+          )}
+
+          {/* Standard (non-team, non-adhoc) flow buttons */}
+          {!isTeamLeague && league.status === 'draft' && !isDoublesAdhoc && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start ranking
             </button>
           )}
-          {(league.status === 'draft' && isDoublesAdhoc) && (
+          {!isTeamLeague && (league.status === 'draft' && isDoublesAdhoc) && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start league
             </button>
           )}
-          {league.status === 'ranking' && !isDoublesAdhoc && (
+          {!isTeamLeague && league.status === 'ranking' && !isDoublesAdhoc && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Finalize ranking
             </button>
           )}
-          {league.status === 'ranking' && !isDoublesAdhoc && (
+          {!isTeamLeague && league.status === 'ranking' && !isDoublesAdhoc && (
             <button
               style={{ ...S.smallOutlineBtn, color: copied ? '#16a34a' : undefined, borderColor: copied ? '#86efac' : undefined }}
               onClick={handleCopyReminder}
@@ -562,7 +587,7 @@ function LeagueCard({
               {busyId === `recalc-${league.id}` ? '⏳ Recalculating…' : '📊 Recalculate rankings'}
             </button>
           )}
-          {league.status === 'ranked' && (
+          {!isTeamLeague && league.status === 'ranked' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start league
             </button>

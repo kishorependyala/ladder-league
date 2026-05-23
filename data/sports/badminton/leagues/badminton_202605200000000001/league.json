@@ -2,7 +2,7 @@
   "id": "badminton_202605200000000001",
   "name": "Mayilvahanan badminton Ladder League",
   "sport": "badminton",
-  "status": "active",
+  "status": "draft",
   "adminIds": [
     "202605160000000001",
     "202605170000000005"

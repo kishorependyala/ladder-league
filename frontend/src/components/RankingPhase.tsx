@@ -171,8 +171,12 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
     setLoading(false);
   };
 
-  // ── Doubles adhoc: no ranking phase ─────────────────────────────
-  if (league.rules?.doublesMode === 'adhoc') {
+  // ── Team League: ranking phase leads to team formation ──────────
+  if (league.leagueType === 'team') {
+    // Team leagues go through ranking first, then team formation
+    // Fall through to the normal ranking UI below — but show team league context
+  } else if (league.rules?.doublesMode === 'adhoc') {
+    // ── Doubles adhoc: no ranking phase ─────────────────────────────
     return (
       <div style={{ display: 'grid', gap: '1.25rem' }}>
         <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
@@ -432,12 +436,23 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
 
       {league.status === 'ranked' && isAdmin && (
         <div style={{ ...S.card, display: 'grid', gap: '0.8rem' }}>
-          <h3 style={subheading}>All rankings submitted</h3>
-          <p style={mutedText}>Borda count has determined the final ranking. Review and start the league when ready.</p>
-          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-            <button style={S.smallBtn} disabled={loading} onClick={handleStartLeague}>{loading ? 'Starting…' : 'Start league →'}</button>
-            <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Re-finalize (override)</button>
-          </div>
+          <h3 style={subheading}>✅ Rankings finalised</h3>
+          {league.leagueType === 'team' ? (
+            <>
+              <p style={mutedText}>Rankings are locked. Next step: group players into balanced teams.</p>
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', padding: '0.85rem 1rem', fontSize: '0.88rem', color: '#166534' }}>
+                🏆 <strong>Team League flow:</strong> Rankings done → <strong>Team Formation</strong> (go to League view → Team Formation tab) → Admin confirms teams → <strong>Active season</strong> with round-robin fixtures
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={mutedText}>Borda count has determined the final ranking. Review and start the league when ready.</p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button style={S.smallBtn} disabled={loading} onClick={handleStartLeague}>{loading ? 'Starting…' : 'Start league →'}</button>
+                <button style={S.smallOutlineBtn} disabled={loading} onClick={handleFinalize}>Re-finalize (override)</button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

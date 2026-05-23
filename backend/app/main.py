@@ -617,7 +617,7 @@ def api_start_ranking(league_id: str, data: dict = Body(...)):
     requester = get_user_by_phone(phone)
     if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
         return {"success": False, "message": "Not authorized"}
-    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+    if lg.get("rules", {}).get("doublesMode") == "adhoc" and lg.get("leagueType") != "team":
         return {"success": False, "message": "Doubles ad-hoc leagues skip the ranking phase — start the league directly"}
     if lg["status"] != "draft":
         return {"success": False, "message": "League must be in draft status"}
@@ -678,7 +678,7 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
     lg = get_league_by_id(league_id)
     if not lg:
         return {"success": False, "message": "League not found"}
-    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+    if lg.get("rules", {}).get("doublesMode") == "adhoc" and lg.get("leagueType") != "team":
         return {"success": False, "message": "Doubles ad-hoc leagues do not use a ranking phase"}
     if lg["status"] not in ("draft", "ranking", "ranked"):
         return {"success": False, "message": "League is not in a ranking phase"}
@@ -694,6 +694,9 @@ def api_submit_ranking(league_id: str, data: dict = Body(...)):
     lg["finalRanking"] = compute_final_ranking(lg)
     if all_submitted and lg["status"] == "ranking":
         lg["status"] = "ranked"
+        # Team leagues: auto-advance phase to team_formation when all submitted
+        if lg.get("leagueType") == "team":
+            lg["phase"] = "team_formation"
 
     save_league(lg)
     # Count only current players who have submitted (exclude stale votes from removed players)
@@ -713,13 +716,16 @@ def api_finalize_ranking(league_id: str, data: dict = Body(...)):
     requester = get_user_by_phone(phone)
     if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
         return {"success": False, "message": "Not authorized"}
-    if lg.get("rules", {}).get("doublesMode") == "adhoc":
+    if lg.get("rules", {}).get("doublesMode") == "adhoc" and lg.get("leagueType") != "team":
         return {"success": False, "message": "Doubles ad-hoc leagues do not use a ranking phase"}
     if lg["status"] not in ("ranking", "ranked"):
         return {"success": False, "message": "League must be in ranking/ranked phase"}
 
     lg["finalRanking"] = manual_order if manual_order else compute_final_ranking(lg)
     lg["status"] = "ranked"
+    # Team leagues: move to team_formation phase after ranking is finalized
+    if lg.get("leagueType") == "team":
+        lg["phase"] = "team_formation"
     save_league(lg)
     return {"success": True, "league": lg}
 
@@ -749,8 +755,13 @@ def api_start_league(league_id: str, data: dict = Body(...)):
     requester = get_user_by_phone(phone)
     if not requester or (requester["id"] not in lg["adminIds"] and not is_super_admin(phone)):
         return {"success": False, "message": "Not authorized"}
-    if lg["status"] not in ("ranked", "draft"):
-        return {"success": False, "message": "Finalize rankings before starting"}
+    # Team leagues must have teams confirmed (phase = team_league set by confirm endpoint)
+    if lg.get("leagueType") == "team":
+        if lg.get("phase") not in ("team_league",):
+            return {"success": False, "message": "Complete team formation first — go to the Team Formation tab to group players and confirm teams"}
+    else:
+        if lg["status"] not in ("ranked", "draft"):
+            return {"success": False, "message": "Finalize rankings before starting"}
     if not lg.get("finalRanking"):
         lg["finalRanking"] = [p["id"] for p in lg["players"]]
     lg["status"] = "active"
