@@ -2347,3 +2347,309 @@ def api_admin_config(phone: str = Query(...)):
             "startedAt": datetime.now().isoformat(),
         }
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+#  TEAM LEAGUE
+# ══════════════════════════════════════════════════════════════════
+
+def _team_league_admin_check(league_id: str, phone: str):
+    user = get_user_by_phone(phone)
+    if not user:
+        return None, None, {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return None, None, {"success": False, "message": "League not found"}
+    if not (is_super_admin(phone) or user["id"] in lg.get("adminIds", [])):
+        return None, None, {"success": False, "message": "Admin only"}
+    return user, lg, None
+
+
+def _sorted_players_for_team_draft(lg: dict) -> list:
+    final = lg.get("finalRanking", [])
+    players = lg.get("players", [])
+    if final:
+        id_order = {pid: i for i, pid in enumerate(final)}
+        return sorted(players, key=lambda p: id_order.get(p["id"], 9999))
+    try:
+        res = _compute_league_standings(lg)
+        pts_map = {r["player"]["id"]: r["points"] for r in res.get("standings", [])}
+    except Exception:
+        pts_map = {}
+    return sorted(players, key=lambda p: -pts_map.get(p["id"], 0))
+
+
+def _auto_group_players(players: list, num_teams: int) -> list:
+    """Snake-draft players into balanced teams by tier."""
+    teams: list = [[] for _ in range(num_teams)]
+    for tier_start in range(0, len(players), num_teams):
+        tier = players[tier_start:tier_start + num_teams]
+        reverse = (tier_start // num_teams) % 2 == 1
+        if reverse:
+            tier = list(reversed(tier))
+        for i, player in enumerate(tier):
+            teams[i % num_teams].append(player["id"])
+    return teams
+
+
+def _generate_round_robin_fixtures(team_ids: list, league_id: str, sport: str) -> list:
+    from app.leagues import _league_dir
+    league_dir = _league_dir(sport, league_id)
+    ids = list(team_ids)
+    if len(ids) % 2 == 1:
+        ids.append(None)  # bye
+    half = len(ids) // 2
+    fixed = ids[0]
+    rotating = ids[1:]
+    fixtures = []
+    for round_num in range(len(ids) - 1):
+        circle = [fixed] + rotating
+        for i in range(half):
+            a, b = circle[i], circle[len(ids) - 1 - i]
+            if a is not None and b is not None:
+                fid = f"f{round_num+1}_{i+1}_{league_id[-6:]}"
+                fixtures.append({
+                    "id": fid,
+                    "round": round_num + 1,
+                    "team1Id": a,
+                    "team2Id": b,
+                    "status": "pending",
+                    "matchIds": [],
+                    "team1Points": 0,
+                    "team2Points": 0,
+                    "winnerId": None,
+                })
+        rotating = [rotating[-1]] + rotating[:-1]
+    return fixtures
+
+
+@app.post("/api/leagues/{league_id}/team/auto-group")
+def api_team_auto_group(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    num_teams = int(data.get("numTeams", 0))
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    if num_teams < 2:
+        return {"success": False, "message": "Need at least 2 teams"}
+    players = _sorted_players_for_team_draft(lg)
+    if len(players) < num_teams:
+        return {"success": False, "message": f"Not enough players ({len(players)}) for {num_teams} teams"}
+    groups = _auto_group_players(players, num_teams)
+    player_map = {p["id"]: p for p in lg.get("players", [])}
+    preview = []
+    for i, group in enumerate(groups):
+        preview.append({
+            "index": i,
+            "name": f"Team {i + 1}",
+            "playerIds": group,
+            "players": [player_map[pid] for pid in group if pid in player_map],
+        })
+    return {"success": True, "teams": preview, "totalPlayers": len(players), "numTeams": num_teams}
+
+
+@app.post("/api/leagues/{league_id}/team/confirm")
+def api_team_confirm(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    teams_data = data.get("teams", [])
+    settings = data.get("settings", {})
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    if not teams_data or len(teams_data) < 2:
+        return {"success": False, "message": "Need at least 2 teams"}
+    teams = []
+    for i, t in enumerate(teams_data):
+        teams.append({
+            "id": f"t{i+1}_{league_id[-6:]}",
+            "name": t.get("name") or f"Team {i + 1}",
+            "playerIds": t.get("playerIds", []),
+        })
+    fixtures = _generate_round_robin_fixtures([t["id"] for t in teams], league_id, lg["sport"])
+    lg["teams"] = teams
+    lg["fixtures"] = fixtures
+    lg["phase"] = "team_league"
+    lg["teamLeagueSettings"] = {
+        "singlesPerFixture": int(settings.get("singlesPerFixture", 2)),
+        "doublesPerFixture": int(settings.get("doublesPerFixture", 1)),
+    }
+    save_league(lg)
+    return {"success": True, "league": lg, "teamsCount": len(teams), "fixturesCount": len(fixtures)}
+
+
+@app.get("/api/leagues/{league_id}/team/fixtures")
+def api_team_fixtures(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    all_matches = list_matches(lg["sport"], league_id)
+    match_map = {m["id"]: m for m in all_matches}
+    enriched = []
+    for f in lg.get("fixtures", []):
+        f_copy = dict(f)
+        f_copy["matches"] = [match_map[mid] for mid in f.get("matchIds", []) if mid in match_map]
+        enriched.append(f_copy)
+    return {"success": True, "fixtures": enriched, "teams": {t["id"]: t for t in lg.get("teams", [])}}
+
+
+def _recompute_fixture(lg: dict, fixture_id: str) -> dict:
+    fixtures = lg.get("fixtures", [])
+    f = next((x for x in fixtures if x["id"] == fixture_id), None)
+    if not f:
+        return lg
+    all_matches = list_matches(lg["sport"], lg["id"])
+    match_map = {m["id"]: m for m in all_matches}
+    t1_id = f["team1Id"]
+    t2_id = f["team2Id"]
+    t1_player_ids = set(next((t["playerIds"] for t in lg.get("teams", []) if t["id"] == t1_id), []))
+    player_to_team = {}
+    for t in lg.get("teams", []):
+        if t["id"] in (t1_id, t2_id):
+            for pid in t.get("playerIds", []):
+                player_to_team[pid] = t["id"]
+    t1_pts = t2_pts = 0
+    for mid in f.get("matchIds", []):
+        m = match_map.get(mid)
+        if not m or m.get("status") != "accepted":
+            continue
+        if m.get("matchType") == "doubles":
+            score = m.get("score", {})
+            wt = m.get("winnerTeam") or _resolve_winner_team(score, lg["sport"], lg.get("rules", {}).get("scoringFormat"))
+            t1_submitter = bool(set(m.get("team1PlayerIds", [])) & t1_player_ids)
+            winner_is_t1 = (wt == "team1" and t1_submitter) or (wt == "team2" and not t1_submitter)
+            if winner_is_t1:
+                t1_pts += 1
+            else:
+                t2_pts += 1
+        else:
+            winner_raw = m.get("winner")
+            if winner_raw == "submitter":
+                winner_id = m.get("submitterId")
+            elif winner_raw == "opponent":
+                winner_id = m.get("opponentId")
+            else:
+                winner_id = winner_raw
+            wt = player_to_team.get(winner_id)
+            if wt == t1_id:
+                t1_pts += 1
+            elif wt == t2_id:
+                t2_pts += 1
+    f["team1Points"] = t1_pts
+    f["team2Points"] = t2_pts
+    settings = lg.get("teamLeagueSettings", {})
+    expected = settings.get("singlesPerFixture", 2) + settings.get("doublesPerFixture", 1)
+    accepted = sum(1 for mid in f.get("matchIds", []) if match_map.get(mid, {}).get("status") == "accepted")
+    if accepted >= expected:
+        f["status"] = "completed"
+        f["winnerId"] = t1_id if t1_pts > t2_pts else t2_id if t2_pts > t1_pts else None
+    save_league(lg)
+    return lg
+
+
+@app.post("/api/leagues/{league_id}/team/fixtures/{fixture_id}/tag-match")
+def api_team_tag_match(league_id: str, fixture_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    match_id = data.get("matchId")
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    f = next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)
+    if not f:
+        return {"success": False, "message": "Fixture not found"}
+    if match_id not in f.get("matchIds", []):
+        f.setdefault("matchIds", []).append(match_id)
+    m = get_match(lg["sport"], league_id, match_id)
+    if m:
+        m["fixtureId"] = fixture_id
+        save_match(m)
+    lg = _recompute_fixture(lg, fixture_id)
+    return {"success": True, "fixture": next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)}
+
+
+@app.post("/api/leagues/{league_id}/team/fixtures/{fixture_id}/recompute")
+def api_team_recompute_fixture(league_id: str, fixture_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    all_matches = list_matches(lg["sport"], league_id)
+    f = next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)
+    if not f:
+        return {"success": False, "message": "Fixture not found"}
+    for m in all_matches:
+        if m.get("fixtureId") == fixture_id and m["id"] not in f.get("matchIds", []):
+            f.setdefault("matchIds", []).append(m["id"])
+    lg = _recompute_fixture(lg, fixture_id)
+    return {"success": True, "fixture": next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)}
+
+
+@app.get("/api/leagues/{league_id}/team/standings")
+def api_team_standings(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    teams = lg.get("teams", [])
+    fixtures = lg.get("fixtures", [])
+    all_matches = list_matches(lg["sport"], league_id)
+    match_map = {m["id"]: m for m in all_matches}
+    team_stats: dict = {}
+    for t in teams:
+        team_stats[t["id"]] = {"team": t, "wins": 0, "losses": 0, "draws": 0, "matchPtsFor": 0, "matchPtsAgainst": 0, "points": 0, "rank": 0}
+    for f in fixtures:
+        if f.get("status") != "completed":
+            continue
+        t1, t2 = f["team1Id"], f["team2Id"]
+        p1, p2 = f.get("team1Points", 0), f.get("team2Points", 0)
+        if t1 in team_stats:
+            team_stats[t1]["matchPtsFor"] += p1
+            team_stats[t1]["matchPtsAgainst"] += p2
+        if t2 in team_stats:
+            team_stats[t2]["matchPtsFor"] += p2
+            team_stats[t2]["matchPtsAgainst"] += p1
+        w = f.get("winnerId")
+        if w == t1:
+            if t1 in team_stats: team_stats[t1]["wins"] += 1; team_stats[t1]["points"] += 3
+            if t2 in team_stats: team_stats[t2]["losses"] += 1
+        elif w == t2:
+            if t2 in team_stats: team_stats[t2]["wins"] += 1; team_stats[t2]["points"] += 3
+            if t1 in team_stats: team_stats[t1]["losses"] += 1
+        else:
+            for tid in (t1, t2):
+                if tid in team_stats: team_stats[tid]["draws"] += 1; team_stats[tid]["points"] += 1
+    sorted_teams = sorted(team_stats.values(), key=lambda x: (-x["points"], -(x["matchPtsFor"] - x["matchPtsAgainst"])))
+    for i, s in enumerate(sorted_teams): s["rank"] = i + 1
+    fixture_match_ids = {mid for f in fixtures for mid in f.get("matchIds", [])}
+    player_map = {p["id"]: p for p in lg.get("players", [])}
+    team_by_player = {pid: t["id"] for t in teams for pid in t.get("playerIds", [])}
+    player_stats: dict = {}
+    scoring = {**default_rules(), **lg.get("rules", {})}.get("scoring", {"win": 3, "loss": 0})
+    for m in all_matches:
+        if m["id"] not in fixture_match_ids or m.get("status") != "accepted":
+            continue
+        if m.get("matchType") == "doubles":
+            score = m.get("score", {})
+            wt = m.get("winnerTeam") or _resolve_winner_team(score, lg["sport"], lg.get("rules", {}).get("scoringFormat"))
+            for side, ids in [("team1", m.get("team1PlayerIds", [])), ("team2", m.get("team2PlayerIds", []))]:
+                for pid in ids:
+                    player_stats.setdefault(pid, {"wins": 0, "losses": 0, "points": 0})
+                    if wt == side:
+                        player_stats[pid]["wins"] += 1; player_stats[pid]["points"] += scoring.get("win", 3)
+                    else:
+                        player_stats[pid]["losses"] += 1; player_stats[pid]["points"] += scoring.get("loss", 0)
+        else:
+            wr = m.get("winner")
+            winner_id = m.get("submitterId") if wr == "submitter" else m.get("opponentId") if wr == "opponent" else wr
+            for pid in [m.get("submitterId"), m.get("opponentId")]:
+                if not pid: continue
+                player_stats.setdefault(pid, {"wins": 0, "losses": 0, "points": 0})
+                if pid == winner_id:
+                    player_stats[pid]["wins"] += 1; player_stats[pid]["points"] += scoring.get("win", 3)
+                else:
+                    player_stats[pid]["losses"] += 1; player_stats[pid]["points"] += scoring.get("loss", 0)
+    individual = sorted(
+        [{"player": player_map[pid], "teamId": team_by_player.get(pid), **stats}
+         for pid, stats in player_stats.items() if pid in player_map],
+        key=lambda x: (-x["points"], -x["wins"])
+    )
+    for i, row in enumerate(individual): row["rank"] = i + 1
+    return {"success": True, "teamStandings": sorted_teams, "individualStandings": individual, "teams": {t["id"]: t for t in teams}}

@@ -114,6 +114,8 @@ export interface League {
   name: string;
   sport: string;
   status: 'draft' | 'ranking' | 'ranked' | 'active' | 'playoffs' | 'completed';
+  leagueType?: string;
+  phase?: string;
   adminIds: string[];
   players: Player[];
   startDate: string | null;
@@ -699,4 +701,80 @@ export function finalizeDoublesRanking(leagueId: string, phone: string, rankedPa
 
 export function fixDoublesMatchTypes(leagueId: string, phone: string): Promise<{ success: boolean; fixed?: number; total?: number; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(leagueId)}/admin/fix-match-types`, { phone });
+}
+
+// ── Team League ─────────────────────────────────────────────────
+
+export interface TeamLeagueTeam {
+  id: string;
+  name: string;
+  playerIds: string[];
+}
+
+export interface TeamLeagueFixture {
+  id: string;
+  round: number;
+  team1Id: string;
+  team2Id: string;
+  status: 'pending' | 'completed';
+  matchIds: string[];
+  matches?: Match[];
+  team1Points: number;
+  team2Points: number;
+  winnerId: string | null;
+}
+
+export interface TeamStandingsRow {
+  team: TeamLeagueTeam;
+  rank: number;
+  wins: number;
+  losses: number;
+  draws: number;
+  matchPtsFor: number;
+  matchPtsAgainst: number;
+  points: number;
+}
+
+export interface TeamIndividualRow {
+  player: Player;
+  teamId: string;
+  rank: number;
+  wins: number;
+  losses: number;
+  points: number;
+}
+
+export interface TeamStandingsResponse {
+  success: boolean;
+  teamStandings: TeamStandingsRow[];
+  individualStandings: TeamIndividualRow[];
+  teams: Record<string, TeamLeagueTeam>;
+}
+
+export function teamAutoGroup(leagueId: string, phone: string, numTeams: number): Promise<{
+  success: boolean; message?: string;
+  teams?: { index: number; name: string; playerIds: string[]; players: Player[] }[];
+  totalPlayers?: number; numTeams?: number;
+}> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/auto-group`, { phone, numTeams });
+}
+
+export function teamConfirm(leagueId: string, phone: string, teams: { name: string; playerIds: string[] }[], settings: { singlesPerFixture: number; doublesPerFixture: number }): Promise<{ success: boolean; league?: League; teamsCount?: number; fixturesCount?: number; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/confirm`, { phone, teams, settings });
+}
+
+export function getTeamFixtures(leagueId: string): Promise<{ success: boolean; fixtures: TeamLeagueFixture[]; teams: Record<string, TeamLeagueTeam> }> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/team/fixtures`);
+}
+
+export function getTeamStandings(leagueId: string): Promise<TeamStandingsResponse> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/team/standings`);
+}
+
+export function teamTagMatch(leagueId: string, fixtureId: string, matchId: string, phone: string): Promise<{ success: boolean; fixture?: TeamLeagueFixture; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/fixtures/${encodeURIComponent(fixtureId)}/tag-match`, { phone, matchId });
+}
+
+export function teamRecomputeFixture(leagueId: string, fixtureId: string, phone: string): Promise<{ success: boolean; fixture?: TeamLeagueFixture; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/fixtures/${encodeURIComponent(fixtureId)}/recompute`, { phone });
 }

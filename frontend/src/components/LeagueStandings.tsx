@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { findLeaguePlayer, getDisplayName, getDoublesStandings, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type DoublesStandingsRow, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
+import TeamFormation from './TeamFormation';
+import TeamStandings from './TeamStandings';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
 import DoublesStandings from './DoublesStandings';
 import MatchGrid from './MatchGrid';
@@ -17,7 +19,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules' | 'doubles';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures';
 
 type MatchResultCard = {
   match: Match;
@@ -149,6 +151,8 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none');
+  const isTeamLeague = currentLeague.leagueType === 'team';
+  const teamPhase = currentLeague.phase ?? '';
   const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
 
   useEffect(() => {
@@ -363,8 +367,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid #fed7aa', overflowX: 'auto' }}>
           {([
+            ...(isTeamLeague && teamPhase === 'team_formation' && isAdmin
+              ? [['team-formation', '🏗️ Team Formation']] as [StandingsTab, string][]
+              : []),
+            ...(isTeamLeague && teamPhase !== 'ranking'
+              ? [
+                  ['team-standings', '🏆 Team Standings'] as [StandingsTab, string],
+                ] : []),
             ['standings', '📊 Standings'],
-            ...(!isDoubles ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
+            ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
             ['rounds', '📅 Rounds'],
             ['schedule', '📋 Schedule & Pending'] as [StandingsTab, string],
@@ -665,6 +676,22 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             user={user}
             isAdmin={isAdmin}
             onLeagueUpdated={updated => setCurrentLeague(updated)}
+          />
+        )}
+
+        {activeTab === 'team-formation' && (
+          <TeamFormation
+            league={currentLeague}
+            user={user}
+            onLeagueUpdated={updated => { setCurrentLeague(updated); loadData(); }}
+          />
+        )}
+
+        {activeTab === 'team-standings' && (
+          <TeamStandings
+            league={currentLeague}
+            user={user}
+            isAdmin={isAdmin}
           />
         )}
       </div>
