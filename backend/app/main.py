@@ -626,7 +626,27 @@ def api_start_ranking(league_id: str, data: dict = Body(...)):
     return {"success": True, "league": lg}
 
 
-@app.post("/api/leagues/{league_id}/submit-ranking")
+@app.post("/api/leagues/{league_id}/reopen-ranking")
+def api_reopen_ranking(league_id: str, data: dict = Body(...)):
+    """Move an active (or ranked/playoffs) league back to ranking phase so players can re-seed."""
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg.get("adminIds", []) and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+    allowed = {"active", "ranked", "playoffs"}
+    if lg["status"] not in allowed:
+        return {"success": False, "message": f"Can only reopen ranking from: {', '.join(sorted(allowed))}"}
+    lg["status"] = "ranking"
+    # Clear finalRanking and stackRanks so players re-submit
+    lg["finalRanking"] = []
+    lg["stackRanks"] = {}
+    save_league(lg)
+    return {"success": True, "league": lg}
+
+
 def api_submit_ranking(league_id: str, data: dict = Body(...)):
     phone = data.get("phone")
     ranked_ids = data.get("rankedIds", [])  # ordered list of player IDs

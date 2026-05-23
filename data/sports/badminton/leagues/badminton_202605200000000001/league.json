@@ -306,5 +306,7 @@
       "name": "Anumala/Pendyala",
       "createdAt": "2026-05-22T02:54:32.602990"
     }
-  ]
+  ],
+  "leagueType": "team",
+  "phase": "team_formation"
 }

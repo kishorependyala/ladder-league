@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -475,6 +475,24 @@ function LeagueCard({
               return r.league;
             })}>
               🏆 Start Playoffs
+            </button>
+          )}
+          {['active', 'ranked', 'playoffs'].includes(league.status) && (
+            <button
+              style={{ ...S.smallOutlineBtn, borderColor: '#fca5a5', color: '#dc2626', fontSize: '0.8rem' }}
+              disabled={!!busyId}
+              title="Move league back to ranking phase. Rankings and stack-ranks will be cleared so players re-submit."
+              onClick={() => {
+                if (!window.confirm('Move league back to ranking phase? This will clear finalRanking and stackRanks so players re-submit their seed order.')) return;
+                act(`reopen-ranking-${league.id}`, async () => {
+                  const r = await reopenRanking(league.id, user.phone);
+                  if (!r.success || !r.league) throw new Error(r.message || 'Failed');
+                  setMessage('✅ League moved back to ranking phase.');
+                  return r.league;
+                });
+              }}
+            >
+              🔄 Reopen ranking
             </button>
           )}
           {!league.leagueType && ['draft', 'ranking', 'ranked', 'active'].includes(league.status) && (
