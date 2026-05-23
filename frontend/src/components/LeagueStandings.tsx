@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { findLeaguePlayer, getDisplayName, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
+import { findLeaguePlayer, getDisplayName, getDoublesStandings, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type DoublesStandingsRow, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
 import DoublesStandings from './DoublesStandings';
 import MatchGrid from './MatchGrid';
@@ -137,6 +137,7 @@ function CoinFlipModal({ players, onClose }: { players: { id: string; firstName:
 function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [currentLeague, setCurrentLeague] = useState(league);
   const [standings, setStandings] = useState<StandingsRow[]>([]);
+  const [doublesStandings, setDoublesStandings] = useState<DoublesStandingsRow[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
@@ -147,7 +148,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none');
-  const [activeTab, setActiveTab] = useState<StandingsTab>(isDoubles ? 'doubles' : 'standings');
+  const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
 
   useEffect(() => {
     setCurrentLeague(league);
@@ -190,12 +191,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
     setLoading(true);
     setError('');
     try {
-      const [roles, leagueResponse, standingsResponse, leagueMatches, pending] = await Promise.all([
+      const doublesMode = league.rules?.doublesMode;
+      const isDoublesLeague = Boolean(doublesMode && doublesMode !== 'none');
+      const [roles, leagueResponse, standingsResponse, leagueMatches, pending, doublesStandingsResponse] = await Promise.all([
         getMyRoles(user.phone),
         getLeague(league.id),
         getLeagueStandings(league.id),
         getLeagueMatches(league.id),
         getPendingMatches(user.id),
+        isDoublesLeague ? getDoublesStandings(league.id) : Promise.resolve(null),
       ]);
       const nextLeague = leagueResponse || league;
       const nextMatches = Array.isArray(leagueMatches) ? leagueMatches : [];
@@ -208,6 +212,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       setStandings(standingsResponse.standings || []);
       setMatches(nextMatches);
       setPendingMatches(Array.from(mergedPending.values()));
+      if (doublesStandingsResponse) setDoublesStandings(doublesStandingsResponse.standings || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load league standings.');
     }
@@ -346,7 +351,8 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       <div style={{ ...S.card, display: 'grid', gap: '1rem' }}>
         <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid #fed7aa', overflowX: 'auto' }}>
           {([
-            ...(!isDoubles ? [['standings', '📊 Standings'], ['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
+            ['standings', '📊 Standings'],
+            ...(!isDoubles ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
             ['rounds', '📅 Rounds'],
             ['schedule', '📋 Schedule & Pending'] as [StandingsTab, string],
@@ -374,7 +380,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           ))}
         </div>
 
-        {activeTab === 'standings' && (
+        {activeTab === 'standings' && !isDoubles && (
           <div style={{ overflowX: 'auto', display: 'grid', gap: '0.8rem' }}>
             <h3 style={subheading}>Standings</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
@@ -402,6 +408,52 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {activeTab === 'standings' && isDoubles && (
+          <div style={{ overflowX: 'auto', display: 'grid', gap: '0.8rem' }}>
+            <h3 style={subheading}>Doubles Standings</h3>
+            <p style={{ ...mutedText, fontSize: '0.82rem' }}>Ranked by: Points → Wins → Sets → Games</p>
+            {loading ? (
+              <p style={mutedText}>Loading…</p>
+            ) : doublesStandings.length === 0 ? (
+              <p style={{ ...mutedText, fontStyle: 'italic' }}>No doubles matches played yet.</p>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 540 }}>
+                <thead>
+                  <tr>
+                    {['#', 'Pair', 'W', 'L', 'Sets', 'Games', 'Pts'].map(h => (
+                      <th key={h} style={tableHeadCell}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {doublesStandings.map(row => {
+                    const p1 = currentLeague.players.find((p: Player) => p.id === row.pair.player1Id);
+                    const p2 = currentLeague.players.find((p: Player) => p.id === row.pair.player2Id);
+                    const p1Name = p1 ? getDisplayName(p1) : row.pair.player1Id;
+                    const p2Name = p2 ? getDisplayName(p2) : row.pair.player2Id;
+                    return (
+                      <tr key={row.pair.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
+                        <td style={{ ...tableCell, color: '#92400e', fontWeight: 700 }}>{row.rank}</td>
+                        <td style={{ ...tableCell, fontWeight: 600 }}>
+                          {row.pair.name}
+                          <span style={{ ...mutedText, fontWeight: 400, fontSize: '0.8rem', display: 'block' }}>
+                            {p1Name} &amp; {p2Name}
+                          </span>
+                        </td>
+                        <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
+                        <td style={{ ...tableCell, color: '#dc2626' }}>{row.losses}</td>
+                        <td style={tableCell}>{row.sets_won ?? 0}</td>
+                        <td style={tableCell}>{row.games_won ?? 0}</td>
+                        <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
 
