@@ -19,7 +19,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures' | 'team-individual';
 
 type MatchResultCard = {
   match: Match;
@@ -377,7 +377,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               ? [['team-formation', '🏗️ Team Formation']] as [StandingsTab, string][]
               : []),
             ...(isTeamLeague && teamPhase !== 'ranking'
-              ? [['team-standings', '🏆 Team League'] as [StandingsTab, string]]
+              ? [
+                  ['team-standings', '📊 Team Standings'] as [StandingsTab, string],
+                  ['team-fixtures', '📅 Fixtures'] as [StandingsTab, string],
+                  ['team-individual', '👤 Individual'] as [StandingsTab, string],
+                ]
               : []),
             ...(!isTeamLeague ? [['standings', '📊 Standings'] as [StandingsTab, string]] : []),
             ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
@@ -692,11 +696,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           />
         )}
 
-        {activeTab === 'team-standings' && (
+        {(activeTab === 'team-standings' || activeTab === 'team-fixtures' || activeTab === 'team-individual') && (
           <TeamStandings
             league={currentLeague}
             user={user}
             isAdmin={isAdmin}
+            view={activeTab === 'team-fixtures' ? 'fixtures' : activeTab === 'team-individual' ? 'individual' : 'teams'}
           />
         )}
       </div>

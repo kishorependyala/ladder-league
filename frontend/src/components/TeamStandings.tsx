@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getDisplayName, getTeamFixtures, getTeamStandings, teamEnterFixtureScores, teamRecomputeFixture, type League, type Player, type TeamIndividualRow, type TeamLeagueFixture, type TeamLeagueTeam, type TeamMatchEntry, type TeamStandingsRow, type User } from '../api';
-import { S, mutedText, subheading, tableCell, tableHeadCell } from '../theme';
+import { S, mutedText, tableCell, tableHeadCell } from '../theme';
 
 type Props = {
   league: League;
   user: User;
   isAdmin: boolean;
+  view: 'teams' | 'fixtures' | 'individual';
 };
-
-type Tab = 'teams' | 'fixtures' | 'individual';
 
 // ── Score entry types ──────────────────────────────────────────────
 interface SetScore { t1: number; t2: number }
@@ -96,8 +95,7 @@ function playerSel(players: Player[], value: string, onChange: (v: string) => vo
   );
 }
 
-export default function TeamStandings({ league, user, isAdmin }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('teams');
+export default function TeamStandings({ league, user, isAdmin, view }: Props) {
   const [teamStandings, setTeamStandings] = useState<TeamStandingsRow[]>([]);
   const [individualStandings, setIndividualStandings] = useState<TeamIndividualRow[]>([]);
   const [teamsMap, setTeamsMap] = useState<Record<string, TeamLeagueTeam>>({});
@@ -184,16 +182,6 @@ export default function TeamStandings({ league, user, isAdmin }: Props) {
     setBusy(null);
   };
 
-  const tabBtn = (tab: Tab, label: string) => (
-    <button key={tab} onClick={() => setActiveTab(tab)} style={{
-      padding: '0.7rem 1rem', background: 'none', border: 'none',
-      borderBottom: activeTab === tab ? '3px solid #f59e0b' : '3px solid transparent',
-      color: activeTab === tab ? '#92400e' : '#6b7280',
-      fontWeight: activeTab === tab ? 700 : 500, fontSize: '0.9rem', cursor: 'pointer',
-      marginBottom: '-2px', whiteSpace: 'nowrap',
-    }}>{label}</button>
-  );
-
   const playerMap = Object.fromEntries(league.players.map(p => [p.id, p]));
 
   if (loading) return <p style={mutedText}>Loading team standings…</p>;
@@ -204,18 +192,10 @@ export default function TeamStandings({ league, user, isAdmin }: Props) {
 
   return (
     <div style={{ display: 'grid', gap: '1rem' }}>
-      <h3 style={subheading}>🏆 Team League</h3>
-
       {msg && <div style={S.infoBox}>{msg}</div>}
 
-      <div style={{ display: 'flex', gap: '0.25rem', borderBottom: '2px solid #fed7aa', overflowX: 'auto' }}>
-        {tabBtn('teams', '📊 Team Standings')}
-        {tabBtn('fixtures', '📅 Fixtures')}
-        {tabBtn('individual', '👤 Individual')}
-      </div>
-
       {/* ── Team Standings ── */}
-      {activeTab === 'teams' && (
+      {view === 'teams' && (
         <div style={{ overflowX: 'auto' }}>
           {teamStandings.length === 0 ? (
             <p style={{ ...mutedText, fontStyle: 'italic' }}>No completed fixtures yet.</p>
@@ -246,7 +226,7 @@ export default function TeamStandings({ league, user, isAdmin }: Props) {
       )}
 
       {/* ── Fixtures ── */}
-      {activeTab === 'fixtures' && (
+      {view === 'fixtures' && (
         <div style={{ display: 'grid', gap: '1.2rem' }}>
           {Object.keys(byRound).sort((a, b) => +a - +b).map(round => (
             <div key={round}>
@@ -398,7 +378,7 @@ export default function TeamStandings({ league, user, isAdmin }: Props) {
       )}
 
       {/* ── Individual Leaderboard ── */}
-      {activeTab === 'individual' && (
+      {view === 'individual' && (
         <div style={{ overflowX: 'auto' }}>
           {individualStandings.length === 0 ? (
             <p style={{ ...mutedText, fontStyle: 'italic' }}>No individual results yet.</p>
