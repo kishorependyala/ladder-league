@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { findLeaguePlayer, getDisplayName, getDoublesStandings, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, leagueTypeLabel, type DoublesStandingsRow, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
+import { findLeaguePlayer, getDisplayName, getDoublesStandings, getLeague, getLeagueMatches, getLeagueStandings, getMyRoles, getPendingMatches, getTeamStandings, leagueTypeLabel, type DoublesStandingsRow, type League, type Match, type MatchLogEntry, type Player, type StandingsRow, type User } from '../api';
 import TeamFormation from './TeamFormation';
 import TeamStandings from './TeamStandings';
 import { S, mutedText, sectionTitle, statusPill, subheading, tableCell, tableHeadCell } from '../theme';
@@ -12,6 +12,7 @@ import RoundsTab from './RoundsTab';
 import SubmitDoublesMatch from './SubmitDoublesMatch';
 import SubmitMatch from './SubmitMatch';
 import LeagueRulesSummary from './LeagueRulesSummary';
+import TeamAddScoreModal from './TeamAddScoreModal';
 
 
 type LeagueStandingsProps = {
@@ -146,10 +147,13 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
   const [showSubmitMatch, setShowSubmitMatch] = useState(false);
   const [showSubmitDoubles, setShowSubmitDoubles] = useState(false);
+  const [showTeamAddScore, setShowTeamAddScore] = useState(false);
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // playerId → team name, only populated for team leagues
+  const [teamPlayerMap, setTeamPlayerMap] = useState<Record<string, string>>({});
   const isTeamLeague = currentLeague.leagueType === 'team';
   const teamPhase = currentLeague.phase ?? '';
   const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none' && !isTeamLeague);
@@ -218,6 +222,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       setMatches(nextMatches);
       setPendingMatches(Array.from(mergedPending.values()));
       if (doublesStandingsResponse) setDoublesStandings(doublesStandingsResponse.standings || []);
+      // Build playerId → teamName map for team leagues (for match results display)
+      if (nextLeague.leagueType === 'team' && nextLeague.phase === 'team_league') {
+        try {
+          const teamRes = await getTeamStandings(nextLeague.id);
+          const pmap: Record<string, string> = {};
+          Object.values(teamRes.teams ?? {}).forEach(t => { t.playerIds.forEach(id => { pmap[id] = t.name; }); });
+          setTeamPlayerMap(pmap);
+        } catch { /* non-critical */ }
+      }
       // Auto-navigate to team formation tab for team leagues in formation phase
       if (admin && nextLeague.leagueType === 'team' && nextLeague.phase === 'team_formation') {
         setActiveTab('team-formation');
@@ -305,6 +318,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 <button
                   style={S.smallBtn}
                   onClick={() => {
+                    if (isTeamLeague) { setShowTeamAddScore(true); return; }
                     const isDoubles = currentLeague.rules?.doublesMode === 'adhoc' || currentLeague.rules?.doublesMode === 'fixed_pairs';
                     if (isDoubles) setShowSubmitDoubles(true); else setShowSubmitMatch(true);
                   }}
@@ -572,14 +586,18 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 const opponentName = findLeaguePlayer(currentLeague, match.opponentId, match.opponent);
                 const winnerName = winnerId === match.submitterId ? submitterName : opponentName;
                 const loserName = winnerId === match.submitterId ? opponentName : submitterName;
+                const submitterTeam = match.submitterId ? teamPlayerMap[match.submitterId] : undefined;
+                const opponentTeam = match.opponentId ? teamPlayerMap[match.opponentId] : undefined;
                 return (
                   <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem', background: '#fffbeb', display: 'grid', gap: '0.5rem' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                       <div style={{ display: 'grid', gap: '0.25rem' }}>
                         <strong style={{ color: '#78350f' }}>
                           <span style={{ color: winnerId === match.submitterId ? '#166534' : '#78350f' }}>{submitterName}</span>
+                          {submitterTeam && <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#9ca3af', marginLeft: '0.25rem' }}>({submitterTeam})</span>}
                           {' vs '}
                           <span style={{ color: winnerId === match.opponentId ? '#166534' : '#78350f' }}>{opponentName}</span>
+                          {opponentTeam && <span style={{ fontSize: '0.72rem', fontWeight: 400, color: '#9ca3af', marginLeft: '0.25rem' }}>({opponentTeam})</span>}
                         </strong>
                         <p style={mutedText}>{formatScore(match)}</p>
                       </div>
@@ -593,9 +611,8 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
 
                     {winnerId && (
                       <div style={{ ...S.infoBox, display: 'grid', gap: '0.25rem' }}>
-                        <div><strong>Winner:</strong> {winnerName}</div>
-                        <div>{winnerName}: +{winnerLog?.basePoints ?? 0} pts{(winnerLog?.upsetBonus ?? 0) > 0 ? ` +${winnerLog?.upsetBonus ?? 0} upset bonus` : ''}</div>
-                        <div>{loserName}: +{loserLog?.basePoints ?? 0} pts</div>
+                        <div><strong>Winner:</strong> {winnerName}{isTeamLeague && (winnerId === match.submitterId ? submitterTeam : opponentTeam) ? ` (${winnerId === match.submitterId ? submitterTeam : opponentTeam})` : ''}</div>
+                        {!isTeamLeague && <><div>{winnerName}: +{winnerLog?.basePoints ?? 0} pts{(winnerLog?.upsetBonus ?? 0) > 0 ? ` +${winnerLog?.upsetBonus ?? 0} upset bonus` : ''}</div><div>{loserName}: +{loserLog?.basePoints ?? 0} pts</div></>}
                       </div>
                     )}
 
@@ -721,6 +738,22 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           players={currentLeague.players || []}
           onClose={() => setShowCoinFlip(false)}
         />
+      )}
+
+      {showTeamAddScore && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          onClick={() => setShowTeamAddScore(false)}
+        >
+          <div style={{ width: '100%', maxWidth: 580, maxHeight: '100%', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+            <TeamAddScoreModal
+              league={currentLeague}
+              user={user}
+              onClose={() => setShowTeamAddScore(false)}
+              onSaved={() => { loadData(); }}
+            />
+          </div>
+        </div>
       )}
 
       {(activeEnterPair || showSubmitMatch) && (
