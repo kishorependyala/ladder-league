@@ -91,7 +91,7 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
       const accepted = match.acceptedPlayerIds ?? [];
       const amI = all.includes(user.id);
       const alreadyAccepted = accepted.includes(user.id);
-      if (isAdmin && !amI) {
+      if (isAdmin) {
         return { canAccept: true, canReject: true, acceptLabel: 'Accept for all' };
       }
       if (amI) {
@@ -102,15 +102,15 @@ function PendingMatches({ matches, user, leagueLookup, leagueId, isAdmin = false
     const acceptedSides = match.acceptedSides || [];
     const mySide = user.id === match.submitterId ? 'submitter' : user.id === match.opponentId ? 'opponent' : null;
     if (match.requiresBothAccept) {
+      if (isAdmin) {
+        return { canAccept: true, canReject: true, acceptLabel: 'Accept for both' };
+      }
       if (mySide) {
         return {
           canAccept: !acceptedSides.includes(mySide),
           canReject: true,
           acceptLabel: 'Accept',
         };
-      }
-      if (isAdmin) {
-        return { canAccept: true, canReject: true, acceptLabel: 'Accept for both' };
       }
       return { canAccept: false, canReject: false, acceptLabel: 'Accept' };
     }
