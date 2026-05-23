@@ -138,6 +138,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [currentLeague, setCurrentLeague] = useState(league);
   const [standings, setStandings] = useState<StandingsRow[]>([]);
   const [doublesStandings, setDoublesStandings] = useState<DoublesStandingsRow[]>([]);
+  const [doublesStandingsLoading, setDoublesStandingsLoading] = useState(false);
   const [matches, setMatches] = useState<Match[]>([]);
   const [pendingMatches, setPendingMatches] = useState<Match[]>([]);
   const [activeEnterPair, setActiveEnterPair] = useState<{ p1: Player; p2: Player } | null>(null);
@@ -222,6 +223,17 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const refreshDoublesStandings = useCallback(async () => {
+    setDoublesStandingsLoading(true);
+    try {
+      const res = await getDoublesStandings(league.id);
+      setDoublesStandings(res.standings ?? []);
+    } catch {
+      // silently fail — error already visible in main loadData
+    }
+    setDoublesStandingsLoading(false);
+  }, [league.id]);
 
   const matchLogsByPlayer = useMemo(() => {
     const map = new Map<string, Map<string, MatchLogEntry>>();
@@ -412,47 +424,60 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         )}
 
         {activeTab === 'standings' && isDoubles && (
-          <div style={{ overflowX: 'auto', display: 'grid', gap: '0.8rem' }}>
-            <h3 style={subheading}>Doubles Standings</h3>
-            <p style={{ ...mutedText, fontSize: '0.82rem' }}>Ranked by: Points → Wins → Sets → Games</p>
-            {loading ? (
-              <p style={mutedText}>Loading…</p>
+          <div style={{ display: 'grid', gap: '0.8rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div>
+                <h3 style={{ ...subheading, margin: 0 }}>Doubles Standings</h3>
+                <p style={{ ...mutedText, fontSize: '0.82rem', margin: '0.2rem 0 0' }}>Points → Wins → Sets → Games</p>
+              </div>
+              <button
+                style={{ ...S.smallOutlineBtn }}
+                disabled={doublesStandingsLoading}
+                onClick={refreshDoublesStandings}
+              >
+                {doublesStandingsLoading ? '⏳ Calculating…' : '🔄 Recalculate'}
+              </button>
+            </div>
+            {doublesStandingsLoading ? (
+              <p style={mutedText}>Calculating standings…</p>
             ) : doublesStandings.length === 0 ? (
               <p style={{ ...mutedText, fontStyle: 'italic' }}>No doubles matches played yet.</p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 540 }}>
-                <thead>
-                  <tr>
-                    {['#', 'Pair', 'W', 'L', 'Sets', 'Games', 'Pts'].map(h => (
-                      <th key={h} style={tableHeadCell}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {doublesStandings.map(row => {
-                    const p1 = currentLeague.players.find((p: Player) => p.id === row.pair.player1Id);
-                    const p2 = currentLeague.players.find((p: Player) => p.id === row.pair.player2Id);
-                    const p1Name = p1 ? getDisplayName(p1) : row.pair.player1Id;
-                    const p2Name = p2 ? getDisplayName(p2) : row.pair.player2Id;
-                    return (
-                      <tr key={row.pair.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
-                        <td style={{ ...tableCell, color: '#92400e', fontWeight: 700 }}>{row.rank}</td>
-                        <td style={{ ...tableCell, fontWeight: 600 }}>
-                          {row.pair.name}
-                          <span style={{ ...mutedText, fontWeight: 400, fontSize: '0.8rem', display: 'block' }}>
-                            {p1Name} &amp; {p2Name}
-                          </span>
-                        </td>
-                        <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
-                        <td style={{ ...tableCell, color: '#dc2626' }}>{row.losses}</td>
-                        <td style={tableCell}>{row.sets_won ?? 0}</td>
-                        <td style={tableCell}>{row.games_won ?? 0}</td>
-                        <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 540 }}>
+                  <thead>
+                    <tr>
+                      {['#', 'Pair', 'W', 'L', 'Sets', 'Games', 'Pts'].map(h => (
+                        <th key={h} style={tableHeadCell}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {doublesStandings.map(row => {
+                      const p1 = currentLeague.players.find((p: Player) => p.id === row.pair.player1Id);
+                      const p2 = currentLeague.players.find((p: Player) => p.id === row.pair.player2Id);
+                      const p1Name = p1 ? getDisplayName(p1) : row.pair.player1Id;
+                      const p2Name = p2 ? getDisplayName(p2) : row.pair.player2Id;
+                      return (
+                        <tr key={row.pair.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
+                          <td style={{ ...tableCell, color: '#92400e', fontWeight: 700 }}>{row.rank}</td>
+                          <td style={{ ...tableCell, fontWeight: 600 }}>
+                            {row.pair.name}
+                            <span style={{ ...mutedText, fontWeight: 400, fontSize: '0.8rem', display: 'block' }}>
+                              {p1Name} &amp; {p2Name}
+                            </span>
+                          </td>
+                          <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
+                          <td style={{ ...tableCell, color: '#dc2626' }}>{row.losses}</td>
+                          <td style={tableCell}>{row.sets_won ?? 0}</td>
+                          <td style={tableCell}>{row.games_won ?? 0}</td>
+                          <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
@@ -594,7 +619,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               leagueId={currentLeague.id}
               leagueLookup={{ [currentLeague.id]: currentLeague }}
               isAdmin={isAdmin}
-              onActionComplete={loadData}
+              onActionComplete={async () => { await loadData(); if (isDoubles) refreshDoublesStandings(); }}
             />
 
             <div style={{ display: 'grid', gap: '0.8rem' }}>
