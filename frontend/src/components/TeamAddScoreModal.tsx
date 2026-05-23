@@ -61,20 +61,27 @@ function playerSel(players: Player[], value: string, onChange: (v: string) => vo
   );
 }
 
-function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
+function SetDropdowns({ sport, sets, t1Label, t2Label, winsNeeded: winsNeededProp, onChange }: {
   sport: string;
   sets: Array<SetScore | null>;
   t1Label: string;
   t2Label: string;
+  winsNeeded?: number;
   onChange: (s: Array<SetScore | null>) => void;
 }) {
   const { wins, losses, cfg } = useMemo(() => validPairs(sport), [sport]);
+  const [forceDone, setForceDone] = useState(false);
+  const winsNeeded = winsNeededProp ?? cfg.wins_needed;
   const completeSets = sets.filter((s): s is SetScore => s !== null);
   const t1Wins = completeSets.filter(s => unitWinner(s.t1, s.t2, sport) === 'me').length;
   const t2Wins = completeSets.filter(s => unitWinner(s.t2, s.t1, sport) === 'me').length;
-  const matchWinner = t1Wins >= cfg.wins_needed ? t1Label : t2Wins >= cfg.wins_needed ? t2Label : null;
+  const naturalWinner = t1Wins >= winsNeeded ? t1Label : t2Wins >= winsNeeded ? t2Label : null;
+  const forcedWinner = (forceDone && completeSets.length > 0 && !naturalWinner)
+    ? (t1Wins >= t2Wins ? t1Label : t2Label) : null;
+  const matchWinner = naturalWinner ?? forcedWinner;
 
   const handleChange = (idx: number, val: string) => {
+    setForceDone(false);
     let next: Array<SetScore | null>;
     if (val === '') {
       next = sets.map((s, i) => i === idx ? null : s);
@@ -87,7 +94,7 @@ function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
     if (score && unitWinner(score.t1, score.t2, sport)) {
       let mw = 0, ow = 0;
       next.forEach(s => { if (!s) return; if (unitWinner(s.t1, s.t2, sport) === 'me') mw++; else if (unitWinner(s.t2, s.t1, sport) === 'me') ow++; });
-      if (mw < cfg.wins_needed && ow < cfg.wins_needed && next.length < cfg.max_units) onChange([...next, null]);
+      if (mw < winsNeeded && ow < winsNeeded && next.length < cfg.max_units) onChange([...next, null]);
     }
   };
 
@@ -125,6 +132,13 @@ function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
           </div>
         );
       })}
+      {completeSets.length > 0 && !naturalWinner && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.65rem', background: forceDone ? '#f0fdf4' : '#f9fafb', border: `1px solid ${forceDone ? '#86efac' : '#e5e7eb'}`, borderRadius: '0.5rem' }}>
+          <input type="checkbox" checked={forceDone} onChange={e => setForceDone(e.target.checked)} style={{ width: '1rem', height: '1rem', accentColor: '#16a34a' }} />
+          <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>Match finished here</span>
+          <span style={{ ...mutedText, fontSize: '0.78rem' }}>— e.g. 1-set format</span>
+        </label>
+      )}
       {(t1Wins > 0 || t2Wins > 0) && (
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.4rem 0.65rem', background: matchWinner ? '#f0fdf4' : '#fffbeb', borderRadius: '0.5rem', border: `1px solid ${matchWinner ? '#86efac' : '#fde68a'}` }}>
           <span style={{ fontWeight: 700, color: '#78350f' }}>{t1Wins} – {t2Wins}</span>
@@ -150,6 +164,7 @@ export default function TeamAddScoreModal({ league, user, onClose, onSaved }: Pr
   const [loadingFixtures, setLoadingFixtures] = useState(true);
   const [selectedFixtureId, setSelectedFixtureId] = useState('');
   const [matchType, setMatchType] = useState<MatchType>('singles');
+  const [winsNeeded, setWinsNeeded] = useState(() => (SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis']).wins_needed);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -279,6 +294,19 @@ export default function TeamAddScoreModal({ league, user, onClose, onSaved }: Pr
             </div>
           </div>
 
+          {/* Match format */}
+          <div style={S.fieldGroup}>
+            <label style={S.label}>Match format</label>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {[{ label: '1 Set', wins: 1 }, { label: 'Best of 3', wins: (SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis']).wins_needed }].map(opt => (
+                <button key={opt.wins} onClick={() => { setWinsNeeded(opt.wins); setDraft(d => d ? { ...d, sets: [null] } : d); }}
+                  style={{ padding: '0.45rem 1rem', borderRadius: '0.5rem', border: `2px solid ${winsNeeded === opt.wins ? '#7c3aed' : '#e5e7eb'}`, background: winsNeeded === opt.wins ? '#f5f3ff' : '#f9fafb', color: winsNeeded === opt.wins ? '#6d28d9' : '#6b7280', fontWeight: winsNeeded === opt.wins ? 700 : 400, cursor: 'pointer', fontSize: '0.9rem' }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Player selection + score */}
           {draft && selectedFixture && (
             <div style={{ border: `2px solid ${matchType === 'singles' ? '#fde68a' : '#ddd6fe'}`, borderRadius: '0.65rem', padding: '0.85rem', background: matchType === 'singles' ? '#fffbeb' : '#f5f3ff', display: 'grid', gap: '0.75rem' }}>
@@ -330,6 +358,7 @@ export default function TeamAddScoreModal({ league, user, onClose, onSaved }: Pr
                 sets={draft.sets}
                 t1Label={t1PlayerLabel}
                 t2Label={t2PlayerLabel}
+                winsNeeded={winsNeeded}
                 onChange={sets => setDraft(d => d ? { ...d, sets } : d)}
               />
             </div>

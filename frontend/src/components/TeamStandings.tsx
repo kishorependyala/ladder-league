@@ -17,6 +17,7 @@ interface SinglesEntry {
   t1PlayerId: string;
   t2PlayerId: string;
   sets: Array<SetScore | null>;
+  winsNeeded: number;
 }
 
 interface DoublesEntry {
@@ -24,6 +25,7 @@ interface DoublesEntry {
   t1PlayerIds: [string, string];
   t2PlayerIds: [string, string];
   sets: Array<SetScore | null>;
+  winsNeeded: number;
 }
 
 type MatchEntryDraft = SinglesEntry | DoublesEntry;
@@ -54,9 +56,9 @@ function validPairs(sport: string) {
   return { wins, losses, cfg };
 }
 
-function makeDraftEntries(numSingles: number, numDoubles: number): MatchEntryDraft[] {
-  const s: MatchEntryDraft[] = Array.from({ length: numSingles }, () => ({ type: 'singles' as const, t1PlayerId: '', t2PlayerId: '', sets: [null] }));
-  const d: MatchEntryDraft[] = Array.from({ length: numDoubles }, () => ({ type: 'doubles' as const, t1PlayerIds: ['', ''] as [string, string], t2PlayerIds: ['', ''] as [string, string], sets: [null] }));
+function makeDraftEntries(numSingles: number, numDoubles: number, winsNeeded: number): MatchEntryDraft[] {
+  const s: MatchEntryDraft[] = Array.from({ length: numSingles }, () => ({ type: 'singles' as const, t1PlayerId: '', t2PlayerId: '', sets: [null], winsNeeded }));
+  const d: MatchEntryDraft[] = Array.from({ length: numDoubles }, () => ({ type: 'doubles' as const, t1PlayerIds: ['', ''] as [string, string], t2PlayerIds: ['', ''] as [string, string], sets: [null], winsNeeded }));
   return [...s, ...d];
 }
 
@@ -90,20 +92,31 @@ function validateEntries(entries: MatchEntryDraft[], t1Players: string[], t2Play
 }
 
 /** Dropdown-based set score editor matching the Add Score feel. */
-function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
+function SetDropdowns({ sport, sets, t1Label, t2Label, winsNeeded: winsNeededProp, onChange }: {
   sport: string;
   sets: Array<SetScore | null>;
   t1Label: string;
   t2Label: string;
+  winsNeeded?: number;
   onChange: (sets: Array<SetScore | null>) => void;
 }) {
   const { wins, losses, cfg } = useMemo(() => validPairs(sport), [sport]);
+  const [forceDone, setForceDone] = useState(false);
+  const winsNeeded = winsNeededProp ?? cfg.wins_needed;
   const completeSets = sets.filter((s): s is SetScore => s !== null);
   const t1Wins = completeSets.filter(s => unitWinner(s.t1, s.t2, sport) === 'me').length;
   const t2Wins = completeSets.filter(s => unitWinner(s.t2, s.t1, sport) === 'me').length;
-  const matchWinner = t1Wins >= cfg.wins_needed ? t1Label : t2Wins >= cfg.wins_needed ? t2Label : null;
+  const naturalWinner = t1Wins >= winsNeeded ? t1Label : t2Wins >= winsNeeded ? t2Label : null;
+  const forcedWinner = (forceDone && completeSets.length > 0 && !naturalWinner)
+    ? (t1Wins >= t2Wins ? t1Label : t2Label) : null;
+  const matchWinner = naturalWinner ?? forcedWinner;
+
+  // Reset forceDone when natural winner is reached
+  const prevNatural = useMemo(() => naturalWinner, [naturalWinner]);
+  if (prevNatural && forceDone) setForceDone(false);
 
   const handleChange = (idx: number, val: string) => {
+    setForceDone(false);
     let next: Array<SetScore | null>;
     if (val === '') {
       next = sets.map((s, i) => i === idx ? null : s);
@@ -116,7 +129,7 @@ function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
     if (score && unitWinner(score.t1, score.t2, sport)) {
       let mw = 0, ow = 0;
       next.forEach(s => { if (!s) return; if (unitWinner(s.t1, s.t2, sport) === 'me') mw++; else if (unitWinner(s.t2, s.t1, sport) === 'me') ow++; });
-      if (mw < cfg.wins_needed && ow < cfg.wins_needed && next.length < cfg.max_units) {
+      if (mw < winsNeeded && ow < winsNeeded && next.length < cfg.max_units) {
         onChange([...next, null]);
       }
     }
@@ -157,6 +170,13 @@ function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
           </div>
         );
       })}
+      {completeSets.length > 0 && !naturalWinner && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.4rem 0.65rem', background: forceDone ? '#f0fdf4' : '#f9fafb', border: `1px solid ${forceDone ? '#86efac' : '#e5e7eb'}`, borderRadius: '0.5rem', marginTop: '0.1rem' }}>
+          <input type="checkbox" checked={forceDone} onChange={e => setForceDone(e.target.checked)} style={{ width: '1rem', height: '1rem', accentColor: '#16a34a' }} />
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#374151' }}>Match finished here</span>
+          <span style={{ ...mutedText, fontSize: '0.75rem' }}>— e.g. 1-set format</span>
+        </label>
+      )}
       {(t1Wins > 0 || t2Wins > 0) && (
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.4rem 0.65rem', background: matchWinner ? '#f0fdf4' : '#fffbeb', borderRadius: '0.5rem', border: `1px solid ${matchWinner ? '#86efac' : '#fde68a'}`, marginTop: '0.15rem' }}>
           <span style={{ fontWeight: 700, color: '#78350f' }}>{t1Wins} – {t2Wins}</span>
@@ -228,9 +248,11 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
     const usedT2 = existingEntries.filter(e => e.type === 'singles').map(e => (e as SinglesEntry).t2PlayerId);
     const nextT1 = t1Players.find(id => !usedT1.includes(id)) ?? t1Players[0] ?? '';
     const nextT2 = t2Players.find(id => !usedT2.includes(id)) ?? t2Players[0] ?? '';
+    const cfg = SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis'];
+    const winsNeeded = cfg.wins_needed;
     const newEntry: MatchEntryDraft = type === 'singles'
-      ? { type: 'singles', t1PlayerId: nextT1, t2PlayerId: nextT2, sets: [null] }
-      : { type: 'doubles', t1PlayerIds: [t1Players[0] ?? '', t1Players[1] ?? ''], t2PlayerIds: [t2Players[0] ?? '', t2Players[1] ?? ''], sets: [null] };
+      ? { type: 'singles', t1PlayerId: nextT1, t2PlayerId: nextT2, sets: [null], winsNeeded }
+      : { type: 'doubles', t1PlayerIds: [t1Players[0] ?? '', t1Players[1] ?? ''], t2PlayerIds: [t2Players[0] ?? '', t2Players[1] ?? ''], sets: [null], winsNeeded };
     setEntryDraft(prev => ({ ...prev, [fixtureId]: [...(prev[fixtureId] ?? []), newEntry] }));
     setEntryError(prev => ({ ...prev, [fixtureId]: '' }));
   };
@@ -519,12 +541,24 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                             </div>
                           )}
 
+                          {/* Match format selector */}
+                          <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', marginTop: '0.45rem', marginBottom: '0.1rem' }}>
+                            <span style={{ ...mutedText, fontSize: '0.72rem', marginRight: '0.2rem' }}>Format:</span>
+                            {[{ label: '1 Set', wins: 1 }, { label: 'Best of 3', wins: (SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis']).wins_needed }].map(opt => (
+                              <button key={opt.wins} onClick={() => updateEntry(f.id, idx, { winsNeeded: opt.wins, sets: [null] } as any)}
+                                style={{ fontSize: '0.72rem', padding: '0.15rem 0.45rem', borderRadius: '0.35rem', border: `1px solid ${e.winsNeeded === opt.wins ? '#d97706' : '#e5e7eb'}`, background: e.winsNeeded === opt.wins ? '#fffbeb' : '#f9fafb', color: e.winsNeeded === opt.wins ? '#92400e' : '#6b7280', cursor: 'pointer', fontWeight: e.winsNeeded === opt.wins ? 700 : 400 }}>
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+
                           {/* Set score dropdowns — same feel as Add Score */}
                           <SetDropdowns
                             sport={league.sport}
                             sets={e.sets}
                             t1Label={t1PlayerLabel}
                             t2Label={t2PlayerLabel}
+                            winsNeeded={e.winsNeeded}
                             onChange={sets => updateEntry(f.id, idx, { sets } as any)}
                           />
                         </div>
