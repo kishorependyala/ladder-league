@@ -150,7 +150,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none');
+  const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none' && !isTeamLeague);
   const isTeamLeague = currentLeague.leagueType === 'team';
   const teamPhase = currentLeague.phase ?? '';
   const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
@@ -197,7 +197,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
     setError('');
     try {
       const doublesMode = league.rules?.doublesMode;
-      const isDoublesLeague = Boolean(doublesMode && doublesMode !== 'none');
+      const isDoublesLeague = Boolean(doublesMode && doublesMode !== 'none' && league.leagueType !== 'team');
       const [roles, leagueResponse, standingsResponse, leagueMatches, pending, doublesStandingsResponse] = await Promise.all([
         getMyRoles(user.phone),
         getLeague(league.id),

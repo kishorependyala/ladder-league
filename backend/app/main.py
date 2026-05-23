@@ -2664,7 +2664,114 @@ def api_team_recompute_fixture(league_id: str, fixture_id: str, data: dict = Bod
     return {"success": True, "fixture": next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)}
 
 
-@app.get("/api/leagues/{league_id}/team/standings")
+@app.post("/api/leagues/{league_id}/team/fixtures/{fixture_id}/enter-scores")
+def api_team_enter_scores(league_id: str, fixture_id: str, data: dict = Body(...)):
+    """Admin submits scores for all matches in a fixture directly."""
+    phone = data.get("phone")
+    match_entries = data.get("matches", [])
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    f = next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)
+    if not f:
+        return {"success": False, "message": "Fixture not found"}
+
+    # Validate no duplicate singles player, no duplicate doubles pair per team
+    singles_players_t1, singles_players_t2 = [], []
+    doubles_pairs_t1, doubles_pairs_t2 = [], []
+    for entry in match_entries:
+        if entry.get("type") == "singles":
+            t1p = entry.get("team1PlayerIds", [None])[0]
+            t2p = entry.get("team2PlayerIds", [None])[0]
+            if t1p in singles_players_t1:
+                return {"success": False, "message": f"Player {t1p} plays singles twice for their team"}
+            if t2p in singles_players_t2:
+                return {"success": False, "message": f"Player {t2p} plays singles twice for their team"}
+            singles_players_t1.append(t1p)
+            singles_players_t2.append(t2p)
+        elif entry.get("type") == "doubles":
+            t1p = frozenset(entry.get("team1PlayerIds", []))
+            t2p = frozenset(entry.get("team2PlayerIds", []))
+            if t1p in doubles_pairs_t1:
+                return {"success": False, "message": "Same doubles pair from team 1 plays twice"}
+            if t2p in doubles_pairs_t2:
+                return {"success": False, "message": "Same doubles pair from team 2 plays twice"}
+            doubles_pairs_t1.append(t1p)
+            doubles_pairs_t2.append(t2p)
+
+    created_ids = []
+    now = datetime.now().isoformat()
+    for entry in match_entries:
+        sets_raw = entry.get("sets", [])
+        # Determine winner from sets: count sets won by t1 and t2
+        t1_sets = sum(1 for s in sets_raw if s.get("t1", 0) > s.get("t2", 0))
+        t2_sets = sum(1 for s in sets_raw if s.get("t2", 0) > s.get("t1", 0))
+        t1_wins = t1_sets > t2_sets
+        sets_for_storage = [{"me": s.get("t1", 0), "opp": s.get("t2", 0)} for s in sets_raw]
+
+        mid = next_match_id(lg["sport"], league_id)
+        if entry.get("type") == "singles":
+            t1p = entry.get("team1PlayerIds", [None])[0]
+            t2p = entry.get("team2PlayerIds", [None])[0]
+            match_rec = {
+                "id": mid,
+                "leagueId": league_id,
+                "sport": lg["sport"],
+                "matchType": "singles",
+                "submitterId": t1p,
+                "opponentId": t2p,
+                "adminSubmittedBy": user["id"],
+                "requiresBothAccept": False,
+                "requiresAllAccept": False,
+                "acceptedPlayerIds": [t1p, t2p],
+                "acceptedSides": ["submitter", "opponent"],
+                "score": {"sets": sets_for_storage, "submitterWon": t1_wins},
+                "winner": "submitter" if t1_wins else "opponent",
+                "status": "accepted",
+                "submittedAt": now,
+                "resolvedAt": now,
+                "fixtureId": fixture_id,
+                "isPlayoff": False,
+            }
+        else:  # doubles
+            t1_ids = entry.get("team1PlayerIds", [])
+            t2_ids = entry.get("team2PlayerIds", [])
+            match_rec = {
+                "id": mid,
+                "leagueId": league_id,
+                "sport": lg["sport"],
+                "matchType": "doubles",
+                "team1PlayerIds": t1_ids,
+                "team2PlayerIds": t2_ids,
+                "submitterId": t1_ids[0] if t1_ids else None,
+                "opponentId": None,
+                "adminSubmittedBy": user["id"],
+                "requiresBothAccept": False,
+                "requiresAllAccept": False,
+                "acceptedPlayerIds": t1_ids + t2_ids,
+                "acceptedSides": ["team1", "team2"],
+                "score": {"sets": sets_for_storage, "submitterWon": t1_wins},
+                "winnerTeam": "team1" if t1_wins else "team2",
+                "status": "accepted",
+                "submittedAt": now,
+                "resolvedAt": now,
+                "fixtureId": fixture_id,
+                "isPlayoff": False,
+            }
+        save_match(match_rec)
+        created_ids.append(mid)
+        if mid not in f.setdefault("matchIds", []):
+            f["matchIds"].append(mid)
+
+    lg = _recompute_fixture(lg, fixture_id)
+    return {
+        "success": True,
+        "createdMatchIds": created_ids,
+        "fixture": next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None),
+    }
+
+
+
 def api_team_standings(league_id: str):
     lg = get_league_by_id(league_id)
     if not lg:

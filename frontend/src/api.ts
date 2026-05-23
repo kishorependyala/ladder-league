@@ -792,3 +792,16 @@ export function teamTagMatch(leagueId: string, fixtureId: string, matchId: strin
 export function teamRecomputeFixture(leagueId: string, fixtureId: string, phone: string): Promise<{ success: boolean; fixture?: TeamLeagueFixture; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/fixtures/${encodeURIComponent(fixtureId)}/recompute`, { phone });
 }
+
+export interface TeamMatchEntry {
+  type: 'singles' | 'doubles';
+  team1PlayerIds: string[];
+  team2PlayerIds: string[];
+  sets: { t1: number; t2: number }[];
+}
+
+export function teamEnterFixtureScores(
+  leagueId: string, fixtureId: string, phone: string, matches: TeamMatchEntry[]
+): Promise<{ success: boolean; createdMatchIds?: string[]; fixture?: TeamLeagueFixture; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/fixtures/${encodeURIComponent(fixtureId)}/enter-scores`, { phone, matches });
+}
