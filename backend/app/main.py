@@ -929,7 +929,8 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
                 opp_score = score.get("opponent", 0)
                 m["winnerTeam"] = "team1" if sub_score >= opp_score else "team2"
 
-        if is_admin and user["id"] not in all_four:
+        if is_admin:
+            # Admin can always bulk-accept on behalf of all players
             match["acceptedPlayerIds"] = list(all_four)
             finalize_doubles(match)
             return save_and_sync(match)
@@ -947,7 +948,8 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
         return save_and_sync(match)
 
     if match.get("requiresBothAccept"):
-        if is_admin and user["id"] not in [match["submitterId"], match["opponentId"]]:
+        if is_admin:
+            # Admin can always bulk-accept for both sides
             match["acceptedSides"] = ["submitter", "opponent"]
             finalize_match(match)
             return save_and_sync(match)
