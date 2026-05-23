@@ -326,5 +326,121 @@
     }
   ],
   "leagueType": "team",
-  "phase": "team_formation"
+  "phase": "team_league",
+  "teams": [
+    {
+      "id": "t1_000001",
+      "name": "Team 1",
+      "playerIds": [
+        "202605200000000001",
+        "202605200000000007",
+        "202605200000000008",
+        "202605220000000003"
+      ]
+    },
+    {
+      "id": "t2_000001",
+      "name": "Team 2",
+      "playerIds": [
+        "202605170000000005",
+        "202605160000000001",
+        "202605200000000010",
+        "202605220000000002"
+      ]
+    },
+    {
+      "id": "t3_000001",
+      "name": "Team 3",
+      "playerIds": [
+        "202605200000000003",
+        "202605200000000005",
+        "202605210000000002",
+        "202605220000000001"
+      ]
+    },
+    {
+      "id": "t4_000001",
+      "name": "Team 4",
+      "playerIds": [
+        "202605200000000006",
+        "202605200000000002",
+        "202605200000000004",
+        "202605210000000001"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "f1_1_000001",
+      "round": 1,
+      "team1Id": "t1_000001",
+      "team2Id": "t4_000001",
+      "status": "pending",
+      "matchIds": [
+        "1"
+      ],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f1_2_000001",
+      "round": 1,
+      "team1Id": "t2_000001",
+      "team2Id": "t3_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f2_1_000001",
+      "round": 2,
+      "team1Id": "t1_000001",
+      "team2Id": "t3_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f2_2_000001",
+      "round": 2,
+      "team1Id": "t4_000001",
+      "team2Id": "t2_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f3_1_000001",
+      "round": 3,
+      "team1Id": "t1_000001",
+      "team2Id": "t2_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f3_2_000001",
+      "round": 3,
+      "team1Id": "t3_000001",
+      "team2Id": "t4_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    }
+  ],
+  "teamLeagueSettings": {
+    "singlesPerFixture": 2,
+    "doublesPerFixture": 2
+  }
 }

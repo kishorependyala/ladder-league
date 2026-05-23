@@ -441,7 +441,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
             <>
               <p style={mutedText}>Rankings are locked. Next step: group players into balanced teams.</p>
               <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.75rem', padding: '0.85rem 1rem', fontSize: '0.88rem', color: '#166534' }}>
-                🏆 <strong>Team League flow:</strong> Rankings done → <strong>Team Formation</strong> (go to League view → Team Formation tab) → Admin confirms teams → <strong>Active season</strong> with round-robin fixtures
+                🏆 <strong>Team League flow:</strong> Rankings done → <strong>Team Formation</strong> (go to League view → Team Formation tab) → Admin confirms teams → <strong>League starts automatically</strong> with round-robin fixtures
               </div>
             </>
           ) : (

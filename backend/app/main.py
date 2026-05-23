@@ -2549,6 +2549,7 @@ def api_team_confirm(league_id: str, data: dict = Body(...)):
     lg["teams"] = teams
     lg["fixtures"] = fixtures
     lg["phase"] = "team_league"
+    lg["status"] = "active"
     lg["teamLeagueSettings"] = {
         "singlesPerFixture": int(settings.get("singlesPerFixture", 2)),
         "doublesPerFixture": int(settings.get("doublesPerFixture", 1)),

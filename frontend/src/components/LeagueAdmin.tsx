@@ -544,9 +544,7 @@ function LeagueCard({
               🏆 Form teams →
             </button>
           )}
-          {isTeamLeague && league.status === 'ranked' && teamPhase === 'team_league' && (
-            <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>▶ Start league</button>
-          )}
+          {/* team_league phase no longer needed here — confirm sets status=active directly */}
 
           {/* Standard (non-team, non-adhoc) flow buttons */}
           {!isTeamLeague && league.status === 'draft' && !isDoublesAdhoc && (
