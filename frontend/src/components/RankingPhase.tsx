@@ -180,7 +180,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
             <div>
               <h2 style={sectionTitle}>{league.name}</h2>
               <p style={{ ...mutedText, marginTop: '0.3rem' }}>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules)}</span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules, league.leagueType)}</span>
                 <span style={{ margin: '0 0.3rem', color: '#d1d5db' }}>·</span>
                 {league.sport} · {league.players.length} players
               </p>
@@ -212,7 +212,7 @@ function RankingPhase({ league, user, onLeagueChange }: RankingPhaseProps) {
           <div>
             <h2 style={sectionTitle}>{league.name}</h2>
             <p style={{ ...mutedText, marginTop: '0.3rem' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules)}</span>
+              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#92400e' }}>{leagueTypeLabel(league.rules, league.leagueType)}</span>
               <span style={{ margin: '0 0.3rem', color: '#d1d5db' }}>·</span>
               {league.sport} · {league.players.length} players
             </p>

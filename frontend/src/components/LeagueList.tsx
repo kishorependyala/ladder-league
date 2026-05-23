@@ -74,7 +74,7 @@ function LeagueList({ title, leagues, user, emptyMessage, onOpenLeague, onJoinLe
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', flexWrap: 'wrap' }}>
                     <strong style={{ color: '#78350f', fontSize: '1rem' }}>{league.name}</strong>
-                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules)}</span>
+                    <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules, league.leagueType)}</span>
                     <span style={statusPill(league.status)}>{league.status}</span>
                     <span style={{ fontSize: '0.82rem', color: '#92400e', fontWeight: 700 }}>{league.sport}</span>
                   </div>

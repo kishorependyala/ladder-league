@@ -363,7 +363,7 @@ function LeagueCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             <strong style={{ color: '#78350f', fontSize: '1.05rem' }}>{league.name}</strong>
-            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules)}</span>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules, league.leagueType)}</span>
             <span style={statusPill(league.status)}>{league.status}</span>
             <span style={{ fontSize: '0.82rem', color: '#92400e', fontWeight: 600 }}>{league.sport}</span>
           </div>
@@ -404,7 +404,7 @@ function LeagueCard({
             ) : (
               <>
                 <strong style={{ color: '#78350f', fontSize: '1.05rem' }}>{league.name}</strong>
-                <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules)}</span>
+                <span style={{ fontSize: '0.75rem', color: '#9ca3af', fontWeight: 500 }}>{leagueTypeLabel(league.rules, league.leagueType)}</span>
                 <span style={statusPill(league.status)}>{league.status}</span>
                 <button
                   onClick={() => { setNameInput(league.name); setEditingName(true); }}

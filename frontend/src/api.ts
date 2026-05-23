@@ -263,7 +263,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   });
 }
 
-export function leagueTypeLabel(rules: LeagueRules | undefined): string {
+export function leagueTypeLabel(rules: LeagueRules | undefined, leagueType?: string): string {
+  if (leagueType === 'team') return 'Team League';
   const mode = rules?.doublesMode ?? 'none';
   if (mode === 'adhoc') return 'Doubles · Ad-hoc';
   if (mode === 'fixed_pairs') return 'Doubles · Fixed';
