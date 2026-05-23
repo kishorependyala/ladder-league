@@ -390,6 +390,10 @@ export function reopenRanking(id: string, phone: string): Promise<{ success: boo
   return post(`/api/leagues/${encodeURIComponent(id)}/reopen-ranking`, { phone });
 }
 
+export function forceLeagueStatus(id: string, phone: string, status: string): Promise<{ success: boolean; league?: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(id)}/force-status`, { phone, status });
+}
+
 export function submitRanking(id: string, phone: string, rankedIds: string[]): Promise<{ success: boolean; league: League; submitted: number; total: number; allDone: boolean; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(id)}/submit-ranking`, { phone, rankedIds });
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -197,6 +197,104 @@ function ScheduleEditor({ league, user, onLeagueUpdate }: { league: League; user
 
 
 
+const ALL_STATUSES = ['draft', 'ranking', 'ranked', 'active', 'playoffs', 'completed'] as const;
+type LeagueStatus = typeof ALL_STATUSES[number];
+
+const STATUS_WARNINGS: Record<string, string> = {
+  draft:     'Moving to DRAFT will re-hide the league from active view. Players will not be able to submit matches.',
+  ranking:   'Moving to RANKING clears all current rankings. All players will need to re-submit their seed order.',
+  ranked:    'Moving to RANKED bypasses the ranking vote process. The current finalRanking will be kept.',
+  active:    'Moving to ACTIVE will re-open the season for match submissions.',
+  playoffs:  'Moving to PLAYOFFS will start the playoff phase. Ensure standings are finalised first.',
+  completed: '⚠️ Moving to COMPLETED permanently ends the league. This is hard to reverse.',
+};
+
+function ForceStatusModal({ league, user, onLeagueUpdate, onClose }: {
+  league: League; user: User;
+  onLeagueUpdate: (l: League) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<LeagueStatus | ''>('');
+  const [step, setStep] = useState<1 | 2>(1);  // step 1 = pick, step 2 = final confirm
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleConfirm = async () => {
+    if (!selected) return;
+    setBusy(true); setError('');
+    try {
+      const res = await forceLeagueStatus(league.id, user.phone, selected);
+      if (!res.success || !res.league) throw new Error(res.message || 'Failed');
+      onLeagueUpdate(res.league);
+      onClose();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Error'); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '1rem', padding: '1.4rem', maxWidth: 440, width: '100%', display: 'grid', gap: '1rem' }}
+        onClick={e => e.stopPropagation()}>
+
+        <div>
+          <h3 style={{ margin: 0, color: '#78350f', fontWeight: 700 }}>⚠️ Change League Status</h3>
+          <p style={{ margin: '0.3rem 0 0', fontSize: '0.85rem', color: '#6b7280' }}>
+            Current: <strong style={{ color: '#d97706' }}>{league.status}</strong>
+            {' · '}{league.name}
+          </p>
+        </div>
+
+        {step === 1 && (
+          <>
+            <div style={{ display: 'grid', gap: '0.4rem' }}>
+              {ALL_STATUSES.filter(s => s !== league.status).map(s => (
+                <label key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0.75rem', borderRadius: '0.6rem', border: `2px solid ${selected === s ? '#f59e0b' : '#e5e7eb'}`, background: selected === s ? '#fffbeb' : '#fafafa', cursor: 'pointer' }}>
+                  <input type="radio" name="status" value={s} checked={selected === s} onChange={() => setSelected(s)} style={{ accentColor: '#f59e0b' }} />
+                  <span style={{ fontWeight: 700, color: '#374151', textTransform: 'capitalize', minWidth: 80 }}>{s}</span>
+                  <span style={{ fontSize: '0.78rem', color: '#9ca3af', flex: 1 }}>{STATUS_WARNINGS[s]}</span>
+                </label>
+              ))}
+            </div>
+            {error && <div style={S.errorBox}>{error}</div>}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button style={S.smallOutlineBtn} onClick={onClose}>Cancel</button>
+              <button style={S.smallBtn} disabled={!selected} onClick={() => setStep(2)}>Next →</button>
+            </div>
+          </>
+        )}
+
+        {step === 2 && selected && (
+          <>
+            <div style={{ background: '#fef9c3', border: '2px solid #fde047', borderRadius: '0.75rem', padding: '0.9rem', fontSize: '0.9rem', color: '#854d0e' }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: '1rem' }}>
+                Are you sure? This is a disruptive action.
+              </p>
+              <p style={{ margin: '0.5rem 0 0' }}>
+                You are about to move <strong>"{league.name}"</strong> from{' '}
+                <strong>{league.status}</strong> → <strong style={{ color: '#dc2626' }}>{selected}</strong>.
+              </p>
+              <p style={{ margin: '0.5rem 0 0' }}>{STATUS_WARNINGS[selected]}</p>
+            </div>
+            {error && <div style={S.errorBox}>{error}</div>}
+            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+              <button style={S.smallOutlineBtn} onClick={() => setStep(1)}>← Back</button>
+              <button
+                style={{ ...S.smallBtn, background: '#dc2626' }}
+                disabled={busy}
+                onClick={handleConfirm}
+              >
+                {busy ? 'Changing…' : `✓ Confirm — set to "${selected}"`}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function LeagueCard({
   league,
   user,
@@ -220,6 +318,7 @@ function LeagueCard({
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule'>('players');
   const [copied, setCopied] = useState(false);
+  const [showStatusModal, setShowStatusModal] = useState(false);
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(league.name);
@@ -477,22 +576,15 @@ function LeagueCard({
               🏆 Start Playoffs
             </button>
           )}
-          {['active', 'ranked', 'playoffs'].includes(league.status) && (
+          {/* Single "Change status" button replaces all state-transition buttons for disruptive changes */}
+          {league.status !== 'completed' && (
             <button
               style={{ ...S.smallOutlineBtn, borderColor: '#fca5a5', color: '#dc2626', fontSize: '0.8rem' }}
               disabled={!!busyId}
-              title="Move league back to ranking phase. Rankings and stack-ranks will be cleared so players re-submit."
-              onClick={() => {
-                if (!window.confirm('Move league back to ranking phase? This will clear finalRanking and stackRanks so players re-submit their seed order.')) return;
-                act(`reopen-ranking-${league.id}`, async () => {
-                  const r = await reopenRanking(league.id, user.phone);
-                  if (!r.success || !r.league) throw new Error(r.message || 'Failed');
-                  setMessage('✅ League moved back to ranking phase.');
-                  return r.league;
-                });
-              }}
+              title="Force-change league status. Requires double confirmation."
+              onClick={() => setShowStatusModal(true)}
             >
-              🔄 Reopen ranking
+              ⚙️ Change status
             </button>
           )}
           {!league.leagueType && ['draft', 'ranking', 'ranked', 'active'].includes(league.status) && (
@@ -518,6 +610,15 @@ function LeagueCard({
 
       {error && <div style={S.errorBox}>{error}</div>}
       {message && <div style={S.successBox}>{message}</div>}
+
+      {showStatusModal && (
+        <ForceStatusModal
+          league={league}
+          user={user}
+          onLeagueUpdate={l => { onLeagueUpdate(l); setMessage(`✅ Status changed to "${l.status}".`); }}
+          onClose={() => setShowStatusModal(false)}
+        />
+      )}
 
       {/* tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>

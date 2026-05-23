@@ -647,6 +647,28 @@ def api_reopen_ranking(league_id: str, data: dict = Body(...)):
     return {"success": True, "league": lg}
 
 
+@app.post("/api/leagues/{league_id}/force-status")
+def api_force_status(league_id: str, data: dict = Body(...)):
+    """Admin force-set league status to any value. Disruptive — use with care."""
+    phone = data.get("phone")
+    target_status = data.get("status", "")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg.get("adminIds", []) and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+    valid_statuses = {"draft", "ranking", "ranked", "active", "playoffs", "completed"}
+    if target_status not in valid_statuses:
+        return {"success": False, "message": f"Invalid status. Must be one of: {', '.join(sorted(valid_statuses))}"}
+    if target_status == lg["status"]:
+        return {"success": False, "message": f"League is already in '{target_status}' status"}
+    lg["status"] = target_status
+    save_league(lg)
+    return {"success": True, "league": lg}
+
+
+@app.post("/api/leagues/{league_id}/submit-ranking")
 def api_submit_ranking(league_id: str, data: dict = Body(...)):
     phone = data.get("phone")
     ranked_ids = data.get("rankedIds", [])  # ordered list of player IDs
