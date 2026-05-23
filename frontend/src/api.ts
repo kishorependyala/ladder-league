@@ -800,6 +800,10 @@ export interface TeamMatchEntry {
   sets: { t1: number; t2: number }[];
 }
 
+export function teamRenameTeam(leagueId: string, phone: string, teamId: string, name: string): Promise<{ success: boolean; team?: TeamLeagueTeam; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/team/rename-team`, { phone, teamId, name });
+}
+
 export function teamEnterFixtureScores(
   leagueId: string, fixtureId: string, phone: string, matches: TeamMatchEntry[]
 ): Promise<{ success: boolean; createdMatchIds?: string[]; fixture?: TeamLeagueFixture; message?: string }> {

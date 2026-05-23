@@ -2647,6 +2647,24 @@ def api_team_tag_match(league_id: str, fixture_id: str, data: dict = Body(...)):
     return {"success": True, "fixture": next((x for x in lg.get("fixtures", []) if x["id"] == fixture_id), None)}
 
 
+@app.post("/api/leagues/{league_id}/team/rename-team")
+def api_team_rename(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    team_id = data.get("teamId")
+    new_name = (data.get("name") or "").strip()
+    user, lg, err = _team_league_admin_check(league_id, phone)
+    if err:
+        return err
+    if not team_id or not new_name:
+        return {"success": False, "message": "teamId and name are required"}
+    team = next((t for t in lg.get("teams", []) if t["id"] == team_id), None)
+    if not team:
+        return {"success": False, "message": "Team not found"}
+    team["name"] = new_name
+    save_league(lg)
+    return {"success": True, "team": team}
+
+
 @app.post("/api/leagues/{league_id}/team/fixtures/{fixture_id}/recompute")
 def api_team_recompute_fixture(league_id: str, fixture_id: str, data: dict = Body(...)):
     phone = data.get("phone")

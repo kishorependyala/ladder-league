@@ -11,6 +11,7 @@ type Props = {
 export default function LeagueRulesSummary({ league, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const rules = league.rules;
+  const isTeamLeague = league.leagueType === 'team';
   const fmt = rules?.scoringFormat;
   const sport = SPORT_SCORING[league.sport] ?? SPORT_SCORING['tennis'];
   const winsNeeded   = fmt?.wins_needed   ?? sport.wins_needed;
@@ -31,6 +32,47 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
     until_complete: 'Open until league ends',
   };
   const joinPolicy = rules?.joinPolicy ?? 'draft_only';
+
+  // ── Team League sections ─────────────────────────────────────────
+  const settings = (league as any).teamLeagueSettings ?? {};
+  const singlesPerFixture: number = settings.singlesPerFixture ?? 2;
+  const doublesPerFixture: number = settings.doublesPerFixture ?? 1;
+  const teams: any[] = (league as any).teams ?? [];
+  const totalPlayers = teams.reduce((sum: number, t: any) => sum + (t.playerIds?.length ?? 0), 0);
+
+  const teamSections: { heading: string; rows: { icon: string; label: string; value: string }[] }[] = [
+    {
+      heading: '🏆 Team format',
+      rows: [
+        { icon: '🏷️', label: 'Teams',                 value: teams.length > 0 ? `${teams.length} teams` : 'Not yet set' },
+        { icon: '👥', label: 'Players assigned',       value: totalPlayers > 0 ? `${totalPlayers} players` : '—' },
+        { icon: '📋', label: 'Schedule',               value: 'Round-robin (all teams play each other)' },
+      ],
+    },
+    {
+      heading: '🎮 Fixture format',
+      rows: [
+        { icon: '🎾', label: 'Singles per fixture',   value: `${singlesPerFixture} match${singlesPerFixture !== 1 ? 'es' : ''}` },
+        { icon: '🤝', label: 'Doubles per fixture',   value: `${doublesPerFixture} match${doublesPerFixture !== 1 ? 'es' : ''}` },
+        { icon: '🎯', label: 'Per match',              value: `Best of ${winsNeeded * 2 - 1} ${unitPlural} · ${pointsToWin} pts${winBy >= 2 ? `, win by ${winBy}` : ''}${maxPts ? ` (cap ${maxPts})` : ''}` },
+      ],
+    },
+    {
+      heading: '🏅 Fixture points',
+      rows: [
+        { icon: '✅', label: 'Fixture win',   value: '3 pts' },
+        { icon: '🤝', label: 'Fixture draw',  value: '1 pt' },
+        { icon: '❌', label: 'Fixture loss',  value: '0 pts' },
+        { icon: '📊', label: 'Tiebreak',      value: 'Individual match points (MP±)' },
+      ],
+    },
+    {
+      heading: '🚪 Joining',
+      rows: [
+        { icon: '🚪', label: 'Join policy', value: joinLabels[joinPolicy] ?? joinPolicy },
+      ],
+    },
+  ];
 
   // ── Sections ────────────────────────────────────────────────────
   const sections: { heading: string; rows: { icon: string; label: string; value: string }[] }[] = [
@@ -72,13 +114,22 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
     },
   ];
 
+  const activeSections = isTeamLeague ? teamSections : sections;
+
   // ── Compact pill summary (collapsed state) ──────────────────────
-  const pills = [
-    `Best of ${winsNeeded * 2 - 1} ${unitPlural}`,
-    `Win +${winPts} · Loss ${lossPts >= 0 ? '+' : ''}${lossPts} · No game ${noGamePts}`,
-    `${rules?.minMatchesPerWeek ?? 1}+ match/wk`,
-    `Upset +${rules?.upsetBonus ?? 1}`,
-  ];
+  const pills = isTeamLeague
+    ? [
+        teams.length > 0 ? `${teams.length} teams` : 'Teams TBD',
+        `${singlesPerFixture}s + ${doublesPerFixture}d per fixture`,
+        `Best of ${winsNeeded * 2 - 1} ${unitPlural}`,
+        'Win=3 · Draw=1 · Loss=0',
+      ]
+    : [
+        `Best of ${winsNeeded * 2 - 1} ${unitPlural}`,
+        `Win +${winPts} · Loss ${lossPts >= 0 ? '+' : ''}${lossPts} · No game ${noGamePts}`,
+        `${rules?.minMatchesPerWeek ?? 1}+ match/wk`,
+        `Upset +${rules?.upsetBonus ?? 1}`,
+      ];
 
   if (compact) {
     return (
@@ -99,15 +150,15 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
           </button>
         </div>
 
-        {expanded && <FullRulesTable sections={sections} />}
+        {expanded && <FullRulesTable sections={activeSections} />}
       </div>
     );
   }
 
   return (
     <div style={{ display: 'grid', gap: '0.75rem' }}>
-      <h3 style={{ ...subheading, marginBottom: '0.1rem' }}>📖 League Rules</h3>
-      <FullRulesTable sections={sections} />
+      <h3 style={{ ...subheading, marginBottom: '0.1rem' }}>📖 {isTeamLeague ? 'Team League Rules' : 'League Rules'}</h3>
+      <FullRulesTable sections={activeSections} />
     </div>
   );
 }

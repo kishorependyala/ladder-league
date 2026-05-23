@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getDisplayName, getTeamFixtures, getTeamStandings, teamEnterFixtureScores, teamRecomputeFixture, type League, type Player, type TeamIndividualRow, type TeamLeagueFixture, type TeamLeagueTeam, type TeamMatchEntry, type TeamStandingsRow, type User } from '../api';
+import { getDisplayName, getTeamFixtures, getTeamStandings, teamEnterFixtureScores, teamRecomputeFixture, teamRenameTeam, type League, type Player, type TeamIndividualRow, type TeamLeagueFixture, type TeamLeagueTeam, type TeamMatchEntry, type TeamStandingsRow, type User } from '../api';
 import { S, mutedText, tableCell, tableHeadCell } from '../theme';
 
 type Props = {
@@ -105,6 +105,10 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
 
+  // Team rename state
+  const [renamingTeamId, setRenamingTeamId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
   // Score entry state per fixture
   const [entryOpen, setEntryOpen] = useState<Record<string, boolean>>({});
   const [entryDraft, setEntryDraft] = useState<Record<string, MatchEntryDraft[]>>({});
@@ -182,6 +186,21 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
     setBusy(null);
   };
 
+  const handleRenameTeam = async (teamId: string) => {
+    const name = renameValue.trim();
+    if (!name) return;
+    setBusy(teamId);
+    try {
+      const res = await teamRenameTeam(league.id, user.phone, teamId, name);
+      if (!res.success) throw new Error(res.message);
+      setTeamsMap(prev => ({ ...prev, [teamId]: { ...prev[teamId], name } }));
+      setTeamStandings(prev => prev.map(r => r.team.id === teamId ? { ...r, team: { ...r.team, name } } : r));
+      setMsg('Team renamed ✓');
+    } catch (err) { setMsg(err instanceof Error ? err.message : 'Error renaming'); }
+    setRenamingTeamId(null); setRenameValue('');
+    setBusy(null);
+  };
+
   const playerMap = Object.fromEntries(league.players.map(p => [p.id, p]));
 
   if (loading) return <p style={mutedText}>Loading team standings…</p>;
@@ -196,10 +215,12 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
 
       {/* ── Team Standings ── */}
       {view === 'teams' && (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ display: 'grid', gap: '0.75rem' }}>
+          {isAdmin && <p style={{ ...mutedText, fontSize: '0.8rem' }}>✏️ Click a team name to rename it.</p>}
           {teamStandings.length === 0 ? (
             <p style={{ ...mutedText, fontStyle: 'italic' }}>No completed fixtures yet.</p>
           ) : (
+            <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
               <thead><tr>
                 {['#', 'Team', 'Players', 'W', 'D', 'L', 'MP±', 'Pts'].map(h => <th key={h} style={tableHeadCell}>{h}</th>)}
@@ -208,7 +229,29 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                 {teamStandings.map(row => (
                   <tr key={row.team.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
                     <td style={{ ...tableCell, color: '#92400e', fontWeight: 700 }}>{row.rank}</td>
-                    <td style={{ ...tableCell, fontWeight: 700 }}>{row.team.name}</td>
+                    <td style={{ ...tableCell, fontWeight: 700 }}>
+                      {isAdmin && renamingTeamId === row.team.id ? (
+                        <span style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleRenameTeam(row.team.id); if (e.key === 'Escape') { setRenamingTeamId(null); setRenameValue(''); } }}
+                            style={{ ...S.inp, padding: '0.2rem 0.4rem', fontSize: '0.88rem', width: 120 }}
+                          />
+                          <button style={{ ...S.smallBtn, padding: '0.2rem 0.5rem', fontSize: '0.78rem' }} disabled={busy === row.team.id} onClick={() => handleRenameTeam(row.team.id)}>✓</button>
+                          <button style={{ ...S.smallOutlineBtn, padding: '0.2rem 0.5rem', fontSize: '0.78rem' }} onClick={() => { setRenamingTeamId(null); setRenameValue(''); }}>✕</button>
+                        </span>
+                      ) : (
+                        <span
+                          onClick={() => isAdmin ? (setRenamingTeamId(row.team.id), setRenameValue(row.team.name)) : undefined}
+                          style={{ cursor: isAdmin ? 'pointer' : 'default', borderBottom: isAdmin ? '1px dashed #d97706' : 'none' }}
+                          title={isAdmin ? 'Click to rename' : undefined}
+                        >
+                          {row.team.name}
+                        </span>
+                      )}
+                    </td>
                     <td style={{ ...tableCell, fontSize: '0.8rem', color: '#6b7280' }}>
                       {row.team.playerIds.map(id => getDisplayName(playerMap[id] ?? { id, firstName: id, lastName: '', phone: '' })).join(', ')}
                     </td>
@@ -221,6 +264,7 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
@@ -293,40 +337,55 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                       {/* ── Inline score entry form ── */}
                       {isOpen && (
                         <div style={{ marginTop: '0.8rem', border: '1px solid #fde68a', borderRadius: '0.65rem', padding: '0.85rem', background: '#fff', display: 'grid', gap: '0.8rem' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem', fontSize: '0.78rem', fontWeight: 700, color: '#92400e', textAlign: 'center' }}>
-                            <span>← {t1?.name}</span>
-                            <span>{t2?.name} →</span>
+                          {/* Team column headers */}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.25rem', alignItems: 'center' }}>
+                            <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontWeight: 700, color: '#78350f', fontSize: '0.85rem', textAlign: 'center' }}>{t1?.name ?? 'Team 1'}</div>
+                            <span style={{ color: '#9ca3af', fontWeight: 700, fontSize: '0.85rem', textAlign: 'center' }}>vs</span>
+                            <div style={{ background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontWeight: 700, color: '#1e40af', fontSize: '0.85rem', textAlign: 'center' }}>{t2?.name ?? 'Team 2'}</div>
                           </div>
 
                           {entries.map((e, idx) => {
                             const isSingles = e.type === 'singles';
                             const label = isSingles ? `Singles ${entries.slice(0, idx).filter(x => x.type === 'singles').length + 1}` : `Doubles ${entries.slice(0, idx).filter(x => x.type === 'doubles').length + 1}`;
 
-                            // compute selected players to show in winner label
                             const usedT1Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t1PlayerId);
                             const usedT2Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t2PlayerId);
 
                             return (
-                              <div key={idx} style={{ border: '1px solid #fde68a', borderRadius: '0.5rem', padding: '0.6rem 0.75rem', background: isSingles ? '#fffbeb' : '#f5f3ff' }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed', marginBottom: '0.4rem' }}>{label}</div>
+                              <div key={idx} style={{ border: `2px solid ${isSingles ? '#fde68a' : '#ddd6fe'}`, borderRadius: '0.5rem', padding: '0.6rem 0.75rem', background: isSingles ? '#fffbeb' : '#f5f3ff' }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed', marginBottom: '0.5rem' }}>{isSingles ? '🎾' : '🤝'} {label}</div>
                                 <div style={{ display: 'grid', gap: '0.35rem' }}>
-                                  {/* Player selection */}
+                                  {/* Player selection — team-labelled */}
                                   {isSingles ? (
-                                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                      {playerSel(t1Players, (e as SinglesEntry).t1PlayerId, v => updateEntry(f.id, idx, { t1PlayerId: v } as any), 'Team 1 player', usedT1Singles)}
-                                      <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>vs</span>
-                                      {playerSel(t2Players, (e as SinglesEntry).t2PlayerId, v => updateEntry(f.id, idx, { t2PlayerId: v } as any), 'Team 2 player', usedT2Singles)}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.4rem', alignItems: 'center' }}>
+                                      <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
+                                        {playerSel(t1Players, (e as SinglesEntry).t1PlayerId, v => updateEntry(f.id, idx, { t1PlayerId: v } as any), 'Pick player', usedT1Singles)}
+                                      </div>
+                                      <span style={{ color: '#9ca3af', fontSize: '0.78rem', fontWeight: 700 }}>vs</span>
+                                      <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
+                                        {playerSel(t2Players, (e as SinglesEntry).t2PlayerId, v => updateEntry(f.id, idx, { t2PlayerId: v } as any), 'Pick player', usedT2Singles)}
+                                      </div>
                                     </div>
                                   ) : (
-                                    <div style={{ display: 'grid', gap: '0.25rem' }}>
-                                      <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                        {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[0], v => updateEntry(f.id, idx, { t1PlayerIds: [v, (e as DoublesEntry).t1PlayerIds[1]] } as any), 'T1 P1')}
-                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
-                                        {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[1], v => updateEntry(f.id, idx, { t1PlayerIds: [(e as DoublesEntry).t1PlayerIds[0], v] } as any), 'T1 P2', [(e as DoublesEntry).t1PlayerIds[0]])}
-                                        <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>vs</span>
-                                        {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[0], v => updateEntry(f.id, idx, { t2PlayerIds: [v, (e as DoublesEntry).t2PlayerIds[1]] } as any), 'T2 P1')}
-                                        <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
-                                        {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[1], v => updateEntry(f.id, idx, { t2PlayerIds: [(e as DoublesEntry).t2PlayerIds[0], v] } as any), 'T2 P2', [(e as DoublesEntry).t2PlayerIds[0]])}
+                                    <div style={{ display: 'grid', gap: '0.4rem' }}>
+                                      <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
+                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                          {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[0], v => updateEntry(f.id, idx, { t1PlayerIds: [v, (e as DoublesEntry).t1PlayerIds[1]] } as any), 'Player 1')}
+                                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
+                                          {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[1], v => updateEntry(f.id, idx, { t1PlayerIds: [(e as DoublesEntry).t1PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t1PlayerIds[0]])}
+                                        </div>
+                                      </div>
+                                      <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.78rem', fontWeight: 700 }}>vs</div>
+                                      <div>
+                                        <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
+                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                          {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[0], v => updateEntry(f.id, idx, { t2PlayerIds: [v, (e as DoublesEntry).t2PlayerIds[1]] } as any), 'Player 1')}
+                                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
+                                          {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[1], v => updateEntry(f.id, idx, { t2PlayerIds: [(e as DoublesEntry).t2PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t2PlayerIds[0]])}
+                                        </div>
                                       </div>
                                     </div>
                                   )}

@@ -387,7 +387,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
             ...(!isTeamLeague ? [['rounds', '📅 Rounds'] as [StandingsTab, string]] : []),
-            ['schedule', '📋 Schedule & Pending'] as [StandingsTab, string],
+            ...(!isTeamLeague ? [['schedule', '📋 Schedule & Pending'] as [StandingsTab, string]] : []),
             ['rules', '📖 League Rules'],
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
