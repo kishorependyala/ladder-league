@@ -696,3 +696,7 @@ export function submitDoublesRanking(leagueId: string, phone: string, rankedPair
 export function finalizeDoublesRanking(leagueId: string, phone: string, rankedPairIds?: string[]): Promise<{ success: boolean; league?: League; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(leagueId)}/doubles/ranking/finalize`, { phone, ...(rankedPairIds ? { rankedPairIds } : {}) });
 }
+
+export function fixDoublesMatchTypes(leagueId: string, phone: string): Promise<{ success: boolean; fixed?: number; total?: number; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/admin/fix-match-types`, { phone });
+}

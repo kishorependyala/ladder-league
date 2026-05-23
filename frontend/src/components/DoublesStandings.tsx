@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  createDoublesPair, deleteDoublesPair, finalizeDoublesRanking, getDisplayName,
+  createDoublesPair, deleteDoublesPair, finalizeDoublesRanking, fixDoublesMatchTypes, getDisplayName,
   getDoublesStandings, submitDoublesRanking,
   type DoublesPair, type League, type Player, type User,
 } from '../api';
@@ -228,6 +228,8 @@ export default function DoublesStandings({ league, user, isAdmin, onLeagueUpdate
   const [standingsLoading, setStandingsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'standings' | 'ranking'>('standings');
+  const [fixBusy, setFixBusy] = useState(false);
+  const [fixMsg, setFixMsg] = useState('');
 
   // Pair management state (admin only, fixed_pairs mode)
   const [showAddPair, setShowAddPair] = useState(false);
@@ -250,6 +252,19 @@ export default function DoublesStandings({ league, user, isAdmin, onLeagueUpdate
   }, [league.id, doublesMode]);
 
   useEffect(() => { loadStandings(); }, [loadStandings]);
+
+  const handleFixMatchTypes = async () => {
+    setFixBusy(true); setFixMsg('');
+    try {
+      const res = await fixDoublesMatchTypes(league.id, user.phone);
+      if (!res.success) throw new Error(res.message || 'Failed');
+      setFixMsg(`Fixed ${res.fixed} of ${res.total} matches. Reloading standings…`);
+      await loadStandings();
+    } catch (err) {
+      setFixMsg(err instanceof Error ? err.message : 'Error fixing matches.');
+    }
+    setFixBusy(false);
+  };
 
   const pName = (id: string) => {
     const p = league.players.find((pl: Player) => pl.id === id);
@@ -298,6 +313,14 @@ export default function DoublesStandings({ league, user, isAdmin, onLeagueUpdate
           <p style={{ ...mutedText, fontStyle: 'italic' }}>No doubles matches played yet — rankings will appear here as pairs play.</p>
         ) : (
           <StandingsTable standings={standings} pName={pName} isAdmin={isAdmin} />
+        )}
+        {isAdmin && (
+          <div style={{ marginTop: '0.5rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <button style={{ ...S.smallOutlineBtn, fontSize: '0.78rem' }} disabled={fixBusy} onClick={handleFixMatchTypes}>
+              {fixBusy ? '…' : '🔧 Fix legacy match types'}
+            </button>
+            {fixMsg && <span style={{ ...mutedText, fontSize: '0.8rem' }}>{fixMsg}</span>}
+          </div>
         )}
       </div>
     );
@@ -392,6 +415,14 @@ export default function DoublesStandings({ league, user, isAdmin, onLeagueUpdate
             </div>
           ) : (
             <p style={mutedText}>{isAdmin ? 'No pairs yet. Add a pair above to get started.' : 'No pairs have been created yet.'}</p>
+          )}
+          {isAdmin && (
+            <div style={{ marginTop: '0.25rem', display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+              <button style={{ ...S.smallOutlineBtn, fontSize: '0.78rem' }} disabled={fixBusy} onClick={handleFixMatchTypes}>
+                {fixBusy ? '…' : '🔧 Fix legacy match types'}
+              </button>
+              {fixMsg && <span style={{ ...mutedText, fontSize: '0.8rem' }}>{fixMsg}</span>}
+            </div>
           )}
         </>
       )}

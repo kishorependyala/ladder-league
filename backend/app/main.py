@@ -340,6 +340,40 @@ def api_sync_player_names(data: dict = Body(...)):
     return {"success": True, "leaguesUpdated": total_leagues, "usersProcessed": len(users)}
 
 
+@app.post("/api/leagues/{league_id}/admin/fix-match-types")
+def api_fix_match_types(league_id: str, data: dict = Body(...)):
+    """Admin: backfill matchType='doubles' on legacy matches that are missing the field."""
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    user = get_user_by_phone(phone)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    if not (is_super_admin(phone) or user["id"] in lg.get("adminIds", [])):
+        return {"success": False, "message": "Admin only"}
+
+    doubles_mode = lg.get("rules", {}).get("doublesMode", "none")
+    if doubles_mode == "none":
+        return {"success": False, "message": "Not a doubles league"}
+
+    matches = list_matches(lg["sport"], league_id)
+    fixed = 0
+    for m in matches:
+        if m.get("matchType") == "doubles":
+            continue
+        # Mark as doubles if it has the right doubles fields
+        has_doubles_fields = (
+            (doubles_mode == "adhoc" and len(m.get("team1PlayerIds", [])) == 2 and len(m.get("team2PlayerIds", [])) == 2)
+            or (doubles_mode == "fixed_pairs" and m.get("pair1Id") and m.get("pair2Id"))
+        )
+        if has_doubles_fields:
+            m["matchType"] = "doubles"
+            save_match(m)
+            fixed += 1
+
+    return {"success": True, "fixed": fixed, "total": len(matches)}
+
 
 # ═══════════════════════════════════════════════════════════════════
 #  SPORTS & LEAGUES
@@ -1278,11 +1312,13 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
         return "|".join(sorted([a, b]))
 
     for m in matches:
-        if m.get("status") != "accepted" or m.get("matchType") != "doubles":
+        if m.get("status") != "accepted":
             continue
+        # Accept matches flagged as doubles OR matches that have the doubles team fields
         t1 = m.get("team1PlayerIds", [])
         t2 = m.get("team2PlayerIds", [])
-        if len(t1) != 2 or len(t2) != 2:
+        is_doubles_match = m.get("matchType") == "doubles" or (len(t1) == 2 and len(t2) == 2)
+        if not is_doubles_match:
             continue
 
         winner_team = m.get("winnerTeam")
@@ -1368,11 +1404,14 @@ def _compute_doubles_standings(lg: dict) -> dict:
         }
 
     for m in matches:
-        if m.get("status") != "accepted" or m.get("matchType") != "doubles":
+        if m.get("status") != "accepted":
             continue
         p1_id = m.get("pair1Id")
         p2_id = m.get("pair2Id")
         if not p1_id or not p2_id:
+            continue
+        # Accept matches flagged as doubles OR matches that have pair IDs (pre-migration data)
+        if m.get("matchType") not in ("doubles", None) and not (p1_id and p2_id):
             continue
         if p1_id not in stats or p2_id not in stats:
             continue
