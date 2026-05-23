@@ -16,7 +16,7 @@ type Props = {
 // ── Shared helpers ──────────────────────────────────────────────────
 
 function StandingsTable({ standings, pName, isAdmin, onDelete }: {
-  standings: { pair: DoublesPair; rank: number; wins: number; losses: number; points: number }[];
+  standings: { pair: DoublesPair; rank: number; wins: number; losses: number; points: number; sets_won?: number; games_won?: number }[];
   pName: (id: string) => string;
   isAdmin: boolean;
   onDelete?: (pairId: string) => void;
@@ -24,10 +24,10 @@ function StandingsTable({ standings, pName, isAdmin, onDelete }: {
   if (standings.length === 0) return null;
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 440 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
         <thead>
           <tr>
-            {['#', 'Pair', 'W', 'L', 'Pts'].map(h => <th key={h} style={tableHeadCell}>{h}</th>)}
+            {['#', 'Pair', 'W', 'L', 'Sets', 'Games', 'Pts'].map(h => <th key={h} style={tableHeadCell}>{h}</th>)}
             {isAdmin && onDelete && <th style={tableHeadCell} />}
           </tr>
         </thead>
@@ -43,6 +43,8 @@ function StandingsTable({ standings, pName, isAdmin, onDelete }: {
               </td>
               <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
               <td style={{ ...tableCell, color: '#dc2626' }}>{row.losses}</td>
+              <td style={tableCell}>{row.sets_won ?? 0}</td>
+              <td style={tableCell}>{row.games_won ?? 0}</td>
               <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
               {isAdmin && onDelete && (
                 <td style={tableCell}>
@@ -222,7 +224,7 @@ function PairRankingVote({ league, user, isAdmin, pairs, onLeagueUpdated }: {
 
 export default function DoublesStandings({ league, user, isAdmin, onLeagueUpdated }: Props) {
   const doublesMode = league.rules?.doublesMode ?? 'none';
-  const [standings, setStandings] = useState<{ pair: DoublesPair; rank: number; wins: number; losses: number; points: number }[]>([]);
+  const [standings, setStandings] = useState<{ pair: DoublesPair; rank: number; wins: number; losses: number; points: number; sets_won: number; games_won: number }[]>([]);
   const [standingsLoading, setStandingsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'standings' | 'ranking'>('standings');

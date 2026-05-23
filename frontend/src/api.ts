@@ -619,6 +619,8 @@ export interface DoublesStandingsRow {
   wins: number;
   losses: number;
   points: number;
+  sets_won: number;
+  games_won: number;
   rank: number;
   matchLog: {
     matchId: string;
