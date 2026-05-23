@@ -2772,6 +2772,7 @@ def api_team_enter_scores(league_id: str, fixture_id: str, data: dict = Body(...
 
 
 
+@app.get("/api/leagues/{league_id}/team/standings")
 def api_team_standings(league_id: str):
     lg = get_league_by_id(league_id)
     if not lg:
