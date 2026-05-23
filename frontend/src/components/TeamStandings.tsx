@@ -134,12 +134,16 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
-  const openEntry = (fixtureId: string) => {
-    if (!entryDraft[fixtureId]) {
-      setEntryDraft(prev => ({ ...prev, [fixtureId]: makeDraftEntries(singlesPerFixture, doublesPerFixture) }));
-    }
-    setEntryOpen(prev => ({ ...prev, [fixtureId]: !prev[fixtureId] }));
+  const addEntry = (fixtureId: string, type: 'singles' | 'doubles') => {
+    const newEntry: MatchEntryDraft = type === 'singles'
+      ? { type: 'singles', t1PlayerId: '', t2PlayerId: '', sets: [emptySet()] }
+      : { type: 'doubles', t1PlayerIds: ['', ''], t2PlayerIds: ['', ''], sets: [emptySet()] };
+    setEntryDraft(prev => ({ ...prev, [fixtureId]: [...(prev[fixtureId] ?? []), newEntry] }));
     setEntryError(prev => ({ ...prev, [fixtureId]: '' }));
+  };
+
+  const removeEntry = (fixtureId: string, idx: number) => {
+    setEntryDraft(prev => ({ ...prev, [fixtureId]: (prev[fixtureId] ?? []).filter((_, i) => i !== idx) }));
   };
 
   const updateEntry = (fixtureId: string, idx: number, patch: Partial<MatchEntryDraft>) => {
@@ -151,10 +155,16 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
     setEntryError(prev => ({ ...prev, [fixtureId]: '' }));
   };
 
+  const cancelEntry = (fixtureId: string) => {
+    setEntryDraft(prev => ({ ...prev, [fixtureId]: [] }));
+    setEntryError(prev => ({ ...prev, [fixtureId]: '' }));
+  };
+
   const handleSubmitScores = async (f: TeamLeagueFixture) => {
     const t1 = teamsMap[f.team1Id];
     const t2 = teamsMap[f.team2Id];
     const entries = entryDraft[f.id] ?? [];
+    if (entries.length === 0) { setEntryError(prev => ({ ...prev, [f.id]: 'Add at least one singles or doubles match.' })); return; }
     const validErr = validateEntries(entries, t1?.playerIds ?? [], t2?.playerIds ?? []);
     if (validErr) { setEntryError(prev => ({ ...prev, [f.id]: validErr })); return; }
 
@@ -166,9 +176,8 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
       });
       const res = await teamEnterFixtureScores(league.id, f.id, user.phone, payload);
       if (!res.success) throw new Error(res.message);
-      setMsg(`✅ ${res.createdMatchIds?.length ?? 0} matches recorded.`);
-      setEntryOpen(prev => ({ ...prev, [f.id]: false }));
-      setEntryDraft(prev => ({ ...prev, [f.id]: makeDraftEntries(singlesPerFixture, doublesPerFixture) }));
+      setMsg(`✅ ${res.createdMatchIds?.length ?? 0} match${(res.createdMatchIds?.length ?? 0) !== 1 ? 'es' : ''} recorded.`);
+      setEntryDraft(prev => ({ ...prev, [f.id]: [] }));
       await loadAll();
     } catch (err) {
       setEntryError(prev => ({ ...prev, [f.id]: err instanceof Error ? err.message : 'Error submitting' }));
@@ -271,168 +280,175 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
 
       {/* ── Fixtures ── */}
       {view === 'fixtures' && (
-        <div style={{ display: 'grid', gap: '1.2rem' }}>
-          {Object.keys(byRound).sort((a, b) => +a - +b).map(round => (
-            <div key={round}>
-              <h4 style={{ color: '#92400e', fontWeight: 700, margin: '0 0 0.6rem' }}>Round {round}</h4>
-              <div style={{ display: 'grid', gap: '0.75rem' }}>
-                {byRound[+round].map(f => {
-                  const t1 = teamsMap[f.team1Id];
-                  const t2 = teamsMap[f.team2Id];
-                  const t1Players = (t1?.playerIds ?? []).map(id => playerMap[id]).filter(Boolean) as Player[];
-                  const t2Players = (t2?.playerIds ?? []).map(id => playerMap[id]).filter(Boolean) as Player[];
-                  const isCompleted = f.status === 'completed';
-                  const entries = entryDraft[f.id] ?? [];
-                  const isOpen = entryOpen[f.id] && isAdmin;
+        <div style={{ display: 'grid', gap: '0.85rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <h4 style={{ margin: 0, color: '#92400e', fontWeight: 700 }}>🔄 Round Robin Fixtures</h4>
+            <span style={{ ...mutedText, fontSize: '0.82rem' }}>{fixtures.length} fixture{fixtures.length !== 1 ? 's' : ''} · {fixtures.filter(f => f.status === 'completed').length} completed</span>
+          </div>
 
-                  return (
-                    <div key={f.id} style={{ border: `2px solid ${isCompleted ? '#86efac' : '#fed7aa'}`, borderRadius: '0.85rem', padding: '0.9rem', background: isCompleted ? '#f0fdf4' : '#fffbeb' }}>
-                      {/* Header */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        <div style={{ fontWeight: 700, fontSize: '1rem', color: '#78350f' }}>
-                          {t1?.name ?? f.team1Id} <span style={{ color: '#d97706' }}>{f.team1Points}</span>
-                          {' — '}
-                          <span style={{ color: '#d97706' }}>{f.team2Points}</span> {t2?.name ?? f.team2Id}
-                        </div>
-                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.8rem', color: isCompleted ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>
-                            {isCompleted ? (f.winnerId ? `${teamsMap[f.winnerId]?.name ?? f.winnerId} wins` : 'Draw') : 'Pending'}
-                          </span>
-                          {isAdmin && !isCompleted && (
-                            <button style={{ ...S.smallOutlineBtn, fontSize: '0.78rem' }} onClick={() => openEntry(f.id)}>
-                              {isOpen ? '✕ Cancel' : '📝 Enter scores'}
-                            </button>
-                          )}
-                          {isAdmin && isCompleted && (
-                            <button style={{ ...S.smallOutlineBtn, fontSize: '0.78rem' }} onClick={() => openEntry(f.id)}>
-                              {isOpen ? '✕ Cancel' : '✏️ Edit scores'}
-                            </button>
-                          )}
-                        </div>
-                      </div>
+          {fixtures.length === 0 && <p style={{ ...mutedText, fontStyle: 'italic' }}>No fixtures generated yet.</p>}
 
-                      {/* Existing matches summary */}
-                      {(f.matches ?? []).length > 0 && (
-                        <div style={{ marginTop: '0.5rem', display: 'grid', gap: '0.2rem' }}>
-                          {(f.matches ?? []).map(m => (
-                            <div key={m.id} style={{ fontSize: '0.82rem', color: '#6b7280', padding: '0.2rem 0.5rem', background: '#fff', borderRadius: '0.4rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.75rem', color: m.matchType === 'doubles' ? '#7c3aed' : '#0369a1', fontWeight: 600 }}>
-                                {m.matchType === 'doubles' ? '2s' : '1s'}
-                              </span>
-                              {m.matchType === 'doubles'
-                                ? <>{(m.team1PlayerIds ?? []).map((id: string) => playerMap[id] ? getDisplayName(playerMap[id]) : id).join('+')} <span style={{color:'#d97706'}}>vs</span> {(m.team2PlayerIds ?? []).map((id: string) => playerMap[id] ? getDisplayName(playerMap[id]) : id).join('+')}</>
-                                : <>{playerMap[m.submitterId ?? ''] ? getDisplayName(playerMap[m.submitterId ?? '']) : m.submitterId} <span style={{color:'#d97706'}}>vs</span> {playerMap[m.opponentId ?? ''] ? getDisplayName(playerMap[m.opponentId ?? '']) : m.opponentId}</>
-                              }
-                              {m.score?.sets && m.score.sets.length > 0 && (
-                                <span style={{ marginLeft: 'auto', fontWeight: 600, color: '#374151' }}>
-                                  {m.score.sets.map((s: any) => `${s.me}–${s.opp}`).join(', ')}
-                                </span>
-                              )}
-                              <span style={{ color: m.status === 'accepted' ? '#16a34a' : '#f59e0b', fontSize: '0.72rem' }}>({m.status})</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+          {fixtures.slice().sort((a, b) => a.round - b.round).map(f => {
+            const t1 = teamsMap[f.team1Id];
+            const t2 = teamsMap[f.team2Id];
+            const t1Players = (t1?.playerIds ?? []).map(id => playerMap[id]).filter(Boolean) as Player[];
+            const t2Players = (t2?.playerIds ?? []).map(id => playerMap[id]).filter(Boolean) as Player[];
+            const isCompleted = f.status === 'completed';
+            const entries = entryDraft[f.id] ?? [];
+            const hasEntries = entries.length > 0;
 
-                      {/* ── Inline score entry form ── */}
-                      {isOpen && (
-                        <div style={{ marginTop: '0.8rem', border: '1px solid #fde68a', borderRadius: '0.65rem', padding: '0.85rem', background: '#fff', display: 'grid', gap: '0.8rem' }}>
-                          {/* Team column headers */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.25rem', alignItems: 'center' }}>
-                            <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontWeight: 700, color: '#78350f', fontSize: '0.85rem', textAlign: 'center' }}>{t1?.name ?? 'Team 1'}</div>
-                            <span style={{ color: '#9ca3af', fontWeight: 700, fontSize: '0.85rem', textAlign: 'center' }}>vs</span>
-                            <div style={{ background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: '0.5rem', padding: '0.35rem 0.6rem', fontWeight: 700, color: '#1e40af', fontSize: '0.85rem', textAlign: 'center' }}>{t2?.name ?? 'Team 2'}</div>
-                          </div>
+            return (
+              <div key={f.id} style={{ border: `2px solid ${isCompleted ? '#86efac' : '#fed7aa'}`, borderRadius: '0.85rem', padding: '0.9rem', background: isCompleted ? '#f0fdf4' : '#fffbeb' }}>
+                {/* Fixture header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', color: '#78350f' }}>
+                      {t1?.name ?? f.team1Id}
+                      {isCompleted && <span style={{ color: '#d97706', margin: '0 0.35rem' }}>{f.team1Points}</span>}
+                      <span style={{ color: '#9ca3af', margin: '0 0.25rem' }}>—</span>
+                      {isCompleted && <span style={{ color: '#d97706', margin: '0 0.35rem' }}>{f.team2Points}</span>}
+                      {t2?.name ?? f.team2Id}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.2rem' }}>
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af', background: '#f3f4f6', borderRadius: '999px', padding: '0.1rem 0.45rem' }}>Round {f.round}</span>
+                      <span style={{ fontSize: '0.78rem', color: isCompleted ? '#16a34a' : '#f59e0b', fontWeight: 600 }}>
+                        {isCompleted ? (f.winnerId ? `🏆 ${teamsMap[f.winnerId]?.name ?? f.winnerId} wins` : '🤝 Draw') : '⏳ Pending'}
+                      </span>
+                    </div>
+                  </div>
 
-                          {entries.map((e, idx) => {
-                            const isSingles = e.type === 'singles';
-                            const label = isSingles ? `Singles ${entries.slice(0, idx).filter(x => x.type === 'singles').length + 1}` : `Doubles ${entries.slice(0, idx).filter(x => x.type === 'doubles').length + 1}`;
-
-                            const usedT1Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t1PlayerId);
-                            const usedT2Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t2PlayerId);
-
-                            return (
-                              <div key={idx} style={{ border: `2px solid ${isSingles ? '#fde68a' : '#ddd6fe'}`, borderRadius: '0.5rem', padding: '0.6rem 0.75rem', background: isSingles ? '#fffbeb' : '#f5f3ff' }}>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed', marginBottom: '0.5rem' }}>{isSingles ? '🎾' : '🤝'} {label}</div>
-                                <div style={{ display: 'grid', gap: '0.35rem' }}>
-                                  {/* Player selection — team-labelled */}
-                                  {isSingles ? (
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.4rem', alignItems: 'center' }}>
-                                      <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
-                                        {playerSel(t1Players, (e as SinglesEntry).t1PlayerId, v => updateEntry(f.id, idx, { t1PlayerId: v } as any), 'Pick player', usedT1Singles)}
-                                      </div>
-                                      <span style={{ color: '#9ca3af', fontSize: '0.78rem', fontWeight: 700 }}>vs</span>
-                                      <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
-                                        {playerSel(t2Players, (e as SinglesEntry).t2PlayerId, v => updateEntry(f.id, idx, { t2PlayerId: v } as any), 'Pick player', usedT2Singles)}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <div style={{ display: 'grid', gap: '0.4rem' }}>
-                                      <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
-                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                          {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[0], v => updateEntry(f.id, idx, { t1PlayerIds: [v, (e as DoublesEntry).t1PlayerIds[1]] } as any), 'Player 1')}
-                                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
-                                          {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[1], v => updateEntry(f.id, idx, { t1PlayerIds: [(e as DoublesEntry).t1PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t1PlayerIds[0]])}
-                                        </div>
-                                      </div>
-                                      <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.78rem', fontWeight: 700 }}>vs</div>
-                                      <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
-                                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                          {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[0], v => updateEntry(f.id, idx, { t2PlayerIds: [v, (e as DoublesEntry).t2PlayerIds[1]] } as any), 'Player 1')}
-                                          <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
-                                          {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[1], v => updateEntry(f.id, idx, { t2PlayerIds: [(e as DoublesEntry).t2PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t2PlayerIds[0]])}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                  {/* Sets */}
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.75rem', color: '#6b7280', minWidth: 32 }}>Sets:</span>
-                                    <SetsEditor sets={e.sets} onChange={sets => updateEntry(f.id, idx, { sets } as any)} />
-                                  </div>
-                                  {/* Winner preview */}
-                                  {e.sets.length > 0 && (() => {
-                                    const t1w = e.sets.filter(s => s.t1 > s.t2).length;
-                                    const t2w = e.sets.filter(s => s.t2 > s.t1).length;
-                                    if (t1w === 0 && t2w === 0) return null;
-                                    return (
-                                      <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600 }}>
-                                        🏆 {t1w > t2w ? t1?.name : t2?.name} wins ({t1w}–{t2w} sets)
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {entryError[f.id] && <div style={{ ...S.errorBox, fontSize: '0.82rem' }}>{entryError[f.id]}</div>}
-
-                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                            <button
-                              style={{ ...S.smallBtn, background: '#16a34a' }}
-                              disabled={busy === f.id}
-                              onClick={() => handleSubmitScores(f)}
-                            >
-                              {busy === f.id ? '⏳ Saving…' : `✅ Save ${entries.length} match${entries.length !== 1 ? 'es' : ''}`}
-                            </button>
-                            <button style={S.smallOutlineBtn} disabled={busy === f.id} onClick={() => handleRecompute(f.id)}>
-                              🔄 Recompute
-                            </button>
-                          </div>
-                        </div>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <button
+                        style={{ ...S.smallOutlineBtn, fontSize: '0.78rem', borderColor: '#92400e', color: '#92400e' }}
+                        onClick={() => addEntry(f.id, 'singles')}
+                      >🎾 + Singles</button>
+                      <button
+                        style={{ ...S.smallOutlineBtn, fontSize: '0.78rem', borderColor: '#7c3aed', color: '#7c3aed' }}
+                        onClick={() => addEntry(f.id, 'doubles')}
+                      >🤝 + Doubles</button>
+                      {isCompleted && (
+                        <button style={{ ...S.smallOutlineBtn, fontSize: '0.78rem' }} disabled={busy === f.id} onClick={() => handleRecompute(f.id)}>
+                          🔄 Recompute
+                        </button>
                       )}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+
+                {/* Existing recorded matches */}
+                {(f.matches ?? []).length > 0 && (
+                  <div style={{ marginTop: '0.6rem', display: 'grid', gap: '0.2rem' }}>
+                    {(f.matches ?? []).map(m => (
+                      <div key={m.id} style={{ fontSize: '0.82rem', color: '#374151', padding: '0.25rem 0.55rem', background: '#fff', borderRadius: '0.4rem', display: 'flex', gap: '0.5rem', alignItems: 'center', border: '1px solid #e5e7eb' }}>
+                        <span style={{ fontSize: '0.72rem', background: m.matchType === 'doubles' ? '#ede9fe' : '#e0f2fe', color: m.matchType === 'doubles' ? '#7c3aed' : '#0369a1', fontWeight: 700, borderRadius: '0.3rem', padding: '0.1rem 0.35rem' }}>
+                          {m.matchType === 'doubles' ? 'DBL' : 'SGL'}
+                        </span>
+                        {m.matchType === 'doubles'
+                          ? <>{(m.team1PlayerIds ?? []).map((id: string) => playerMap[id] ? getDisplayName(playerMap[id]) : id).join(' + ')} <span style={{ color: '#d97706' }}>vs</span> {(m.team2PlayerIds ?? []).map((id: string) => playerMap[id] ? getDisplayName(playerMap[id]) : id).join(' + ')}</>
+                          : <>{playerMap[m.submitterId ?? ''] ? getDisplayName(playerMap[m.submitterId ?? '']) : m.submitterId} <span style={{ color: '#d97706' }}>vs</span> {playerMap[m.opponentId ?? ''] ? getDisplayName(playerMap[m.opponentId ?? '']) : m.opponentId}</>
+                        }
+                        {m.score?.sets && m.score.sets.length > 0 && (
+                          <span style={{ marginLeft: 'auto', fontWeight: 700, color: '#374151' }}>
+                            {m.score.sets.map((s: any) => `${s.me}\u2013${s.opp}`).join(', ')}
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.7rem', color: m.status === 'accepted' ? '#16a34a' : '#f59e0b', marginLeft: m.score ? 0 : 'auto' }}>({m.status})</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Score entry form — shown when entries have been added */}
+                {isAdmin && hasEntries && (
+                  <div style={{ marginTop: '0.8rem', border: '2px solid #fde68a', borderRadius: '0.65rem', padding: '0.85rem', background: '#fff', display: 'grid', gap: '0.75rem' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.5rem', alignItems: 'center' }}>
+                      <div style={{ background: '#fffbeb', border: '2px solid #f59e0b', borderRadius: '0.5rem', padding: '0.3rem 0.6rem', fontWeight: 700, color: '#78350f', fontSize: '0.85rem', textAlign: 'center' }}>{t1?.name ?? 'Team 1'}</div>
+                      <span style={{ color: '#9ca3af', fontWeight: 700, fontSize: '0.82rem' }}>vs</span>
+                      <div style={{ background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: '0.5rem', padding: '0.3rem 0.6rem', fontWeight: 700, color: '#1e40af', fontSize: '0.85rem', textAlign: 'center' }}>{t2?.name ?? 'Team 2'}</div>
+                    </div>
+
+                    {entries.map((e, idx) => {
+                      const isSingles = e.type === 'singles';
+                      const singlesNum = entries.slice(0, idx + 1).filter(x => x.type === 'singles').length;
+                      const doublesNum = entries.slice(0, idx + 1).filter(x => x.type === 'doubles').length;
+                      const label = isSingles ? `Singles ${singlesNum}` : `Doubles ${doublesNum}`;
+                      const usedT1Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t1PlayerId);
+                      const usedT2Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t2PlayerId);
+
+                      return (
+                        <div key={idx} style={{ border: `2px solid ${isSingles ? '#fde68a' : '#ddd6fe'}`, borderRadius: '0.5rem', padding: '0.6rem 0.75rem', background: isSingles ? '#fffbeb' : '#f5f3ff' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed' }}>{isSingles ? '\ud83c\udfbe' : '\ud83e\udd1d'} {label}</span>
+                            <button onClick={() => removeEntry(f.id, idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1rem', padding: '0 0.2rem' }} title="Remove">✕</button>
+                          </div>
+
+                          {isSingles ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.4rem', alignItems: 'center' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
+                                {playerSel(t1Players, (e as SinglesEntry).t1PlayerId, v => updateEntry(f.id, idx, { t1PlayerId: v } as any), 'Pick player', usedT1Singles)}
+                              </div>
+                              <span style={{ color: '#9ca3af', fontSize: '0.75rem', fontWeight: 700 }}>vs</span>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
+                                {playerSel(t2Players, (e as SinglesEntry).t2PlayerId, v => updateEntry(f.id, idx, { t2PlayerId: v } as any), 'Pick player', usedT2Singles)}
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'grid', gap: '0.4rem' }}>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[0], v => updateEntry(f.id, idx, { t1PlayerIds: [v, (e as DoublesEntry).t1PlayerIds[1]] } as any), 'Player 1')}
+                                  <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
+                                  {playerSel(t1Players, (e as DoublesEntry).t1PlayerIds[1], v => updateEntry(f.id, idx, { t1PlayerIds: [(e as DoublesEntry).t1PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t1PlayerIds[0]])}
+                                </div>
+                              </div>
+                              <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem', fontWeight: 700 }}>vs</div>
+                              <div>
+                                <div style={{ fontSize: '0.68rem', color: '#1e40af', fontWeight: 600, marginBottom: '0.15rem' }}>{t2?.name}</div>
+                                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                  {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[0], v => updateEntry(f.id, idx, { t2PlayerIds: [v, (e as DoublesEntry).t2PlayerIds[1]] } as any), 'Player 1')}
+                                  <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>+</span>
+                                  {playerSel(t2Players, (e as DoublesEntry).t2PlayerIds[1], v => updateEntry(f.id, idx, { t2PlayerIds: [(e as DoublesEntry).t2PlayerIds[0], v] } as any), 'Player 2', [(e as DoublesEntry).t2PlayerIds[0]])}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#6b7280', minWidth: 32 }}>Sets:</span>
+                            <SetsEditor sets={e.sets} onChange={sets => updateEntry(f.id, idx, { sets } as any)} />
+                          </div>
+
+                          {(() => {
+                            const t1w = e.sets.filter(s => s.t1 > s.t2).length;
+                            const t2w = e.sets.filter(s => s.t2 > s.t1).length;
+                            if (t1w === 0 && t2w === 0) return null;
+                            return (
+                              <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600, marginTop: '0.3rem' }}>
+                                {t1w > t2w ? (t1?.name ?? 'Team 1') : (t2?.name ?? 'Team 2')} wins ({t1w}\u2013{t2w} sets)
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
+
+                    {entryError[f.id] && <div style={{ ...S.errorBox, fontSize: '0.82rem' }}>{entryError[f.id]}</div>}
+
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button style={{ ...S.smallBtn, background: '#16a34a' }} disabled={busy === f.id} onClick={() => handleSubmitScores(f)}>
+                        {busy === f.id ? '\u23f3 Saving\u2026' : `\u2705 Save ${entries.length} match${entries.length !== 1 ? 'es' : ''}`}
+                      </button>
+                      <button style={S.smallOutlineBtn} onClick={() => cancelEntry(f.id)}>✕ Cancel</button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
-          {fixtures.length === 0 && <p style={{ ...mutedText, fontStyle: 'italic' }}>No fixtures generated yet.</p>}
+            );
+          })}
         </div>
       )}
 
