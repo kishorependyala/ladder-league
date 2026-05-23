@@ -377,13 +377,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
               ? [['team-formation', '🏗️ Team Formation']] as [StandingsTab, string][]
               : []),
             ...(isTeamLeague && teamPhase !== 'ranking'
-              ? [
-                  ['team-standings', '🏆 Team Standings'] as [StandingsTab, string],
-                ] : []),
-            ['standings', '📊 Standings'],
+              ? [['team-standings', '🏆 Team League'] as [StandingsTab, string]]
+              : []),
+            ...(!isTeamLeague ? [['standings', '📊 Standings'] as [StandingsTab, string]] : []),
             ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
-            ['rounds', '📅 Rounds'],
+            ...(!isTeamLeague ? [['rounds', '📅 Rounds'] as [StandingsTab, string]] : []),
             ['schedule', '📋 Schedule & Pending'] as [StandingsTab, string],
             ['rules', '📖 League Rules'],
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),

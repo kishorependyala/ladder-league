@@ -38,7 +38,7 @@ export default function TeamFormation({ league, user, onLeagueUpdated }: Props) 
   };
 
   const handleConfirm = async () => {
-    if (!window.confirm(`Confirm ${teams.length} teams and generate round-robin fixtures?`)) return;
+    if (!window.confirm(`Confirm ${teams.length} teams and generate round-robin fixtures?${unassigned.length > 0 ? `\n\n${unassigned.length} player(s) will not be assigned to any team.` : ''}`)) return;
     setConfirmLoading(true); setError('');
     try {
       const res = await teamConfirm(league.id, user.phone, teams, { singlesPerFixture, doublesPerFixture });
@@ -54,8 +54,12 @@ export default function TeamFormation({ league, user, onLeagueUpdated }: Props) 
     if (dragPlayer === null || dragFromTeam === null || dragFromTeam === toTeamIdx) return;
     setTeams(prev => {
       const next = prev.map(t => ({ ...t, playerIds: [...t.playerIds] }));
-      next[dragFromTeam].playerIds = next[dragFromTeam].playerIds.filter(id => id !== dragPlayer);
-      if (!next[toTeamIdx].playerIds.includes(dragPlayer)) {
+      // Remove from source team (if dragging from a real team, not the unassigned pool)
+      if (dragFromTeam >= 0) {
+        next[dragFromTeam].playerIds = next[dragFromTeam].playerIds.filter(id => id !== dragPlayer);
+      }
+      // Add to destination team (if not dropping back to unassigned pool)
+      if (toTeamIdx >= 0 && !next[toTeamIdx].playerIds.includes(dragPlayer)) {
         next[toTeamIdx].playerIds.push(dragPlayer);
       }
       return next;
@@ -137,20 +141,26 @@ export default function TeamFormation({ league, user, onLeagueUpdated }: Props) 
             ))}
           </div>
 
-          {unassigned.length > 0 && (
-            <div style={{ ...S.card, background: '#fef2f2', border: '1px solid #fecaca' }}>
-              <p style={{ ...mutedText, fontWeight: 600, marginBottom: '0.4rem' }}>⚠️ Unassigned players — drag into a team:</p>
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {unassigned.map(p => (
+          <div
+            onDragOver={e => e.preventDefault()}
+            onDrop={() => handleDrop(-1)}
+            style={{ ...S.card, background: unassigned.length > 0 ? '#fef2f2' : '#f9fafb', border: `2px dashed ${unassigned.length > 0 ? '#fca5a5' : '#d1d5db'}`, minHeight: 60 }}>
+            <p style={{ ...mutedText, fontWeight: 600, marginBottom: '0.4rem' }}>
+              🚫 Unassigned / Sit out — drag players here to exclude from teams:
+            </p>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {unassigned.length === 0
+                ? <span style={{ ...mutedText, fontSize: '0.82rem' }}>No players sitting out</span>
+                : unassigned.map(p => (
                   <div key={p.id} draggable
                     onDragStart={() => { setDragPlayer(p.id); setDragFromTeam(-1); }}
                     style={{ padding: '0.3rem 0.6rem', background: '#fff', border: '1px solid #fca5a5', borderRadius: '0.5rem', cursor: 'grab', fontSize: '0.85rem' }}>
                     {getDisplayName(p)}
                   </div>
-                ))}
-              </div>
+                ))
+              }
             </div>
-          )}
+          </div>
 
           {/* Summary table */}
           <div style={{ overflowX: 'auto' }}>
@@ -169,8 +179,8 @@ export default function TeamFormation({ league, user, onLeagueUpdated }: Props) 
           </div>
 
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-            <button style={{ ...S.smallBtn, background: '#16a34a' }} onClick={handleConfirm} disabled={confirmLoading || unassigned.length > 0}>
-              {confirmLoading ? '⏳ Confirming…' : `✅ Confirm ${teams.length} teams & generate fixtures`}
+            <button style={{ ...S.smallBtn, background: '#16a34a' }} onClick={handleConfirm} disabled={confirmLoading}>
+              {confirmLoading ? '⏳ Confirming…' : `✅ Confirm ${teams.length} teams & generate fixtures${unassigned.length > 0 ? ` (${unassigned.length} sitting out)` : ''}`}
             </button>
             <button style={S.smallOutlineBtn} onClick={() => { setTeams([]); setMessage(''); }}>Reset</button>
           </div>
