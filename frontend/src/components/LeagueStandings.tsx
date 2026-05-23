@@ -218,6 +218,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
       setMatches(nextMatches);
       setPendingMatches(Array.from(mergedPending.values()));
       if (doublesStandingsResponse) setDoublesStandings(doublesStandingsResponse.standings || []);
+      // Auto-navigate to team formation tab for team leagues in formation phase
+      if (admin && nextLeague.leagueType === 'team' && nextLeague.phase === 'team_formation') {
+        setActiveTab('team-formation');
+      } else if (nextLeague.leagueType === 'team' && nextLeague.phase === 'team_league') {
+        setActiveTab('team-standings');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load league standings.');
     }

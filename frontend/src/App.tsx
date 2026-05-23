@@ -298,6 +298,7 @@ function App() {
   // ── League detail view (ranking / standings) ───────────────────
   const leagueDetail = selectedLeague && (
     selectedLeague.status === 'active' || selectedLeague.status === 'playoffs' || selectedLeague.status === 'completed'
+    || (selectedLeague.leagueType === 'team' && selectedLeague.status === 'ranked' && selectedLeague.phase !== 'ranking')
       ? <LeagueStandings league={selectedLeague} user={user} />
       : selectedLeague.status === 'draft' || selectedLeague.status === 'ranking' || selectedLeague.status === 'ranked'
         ? <RankingPhase league={selectedLeague} user={user} onLeagueChange={setSelectedLeague} />
