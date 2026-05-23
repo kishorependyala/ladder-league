@@ -340,70 +340,6 @@ def api_sync_player_names(data: dict = Body(...)):
     return {"success": True, "leaguesUpdated": total_leagues, "usersProcessed": len(users)}
 
 
-@app.post("/api/join-league")
-def join_league(data: dict = Body(...)):
-    league = data.get('league')
-    user = data.get('user')  # expects dict with at least 'phone', 'firstName', 'lastName'
-    if not league or not user:
-        return {"success": False, "message": "Missing league or user info"}
-    leagues = load_leagues()
-    if league not in leagues:
-        leagues[league] = []
-    # Check if user already in league by phone
-    if any(u['phone'] == user['phone'] for u in leagues[league]):
-        # Update user info if needed
-        for u in leagues[league]:
-            if u['phone'] == user['phone']:
-                u.update(user)
-        save_leagues(leagues)
-        return {"success": True, "message": "User already in league, info updated"}
-    leagues[league].append(user)
-    save_leagues(leagues)
-    return {"success": True, "message": "User added to league"}
-
-@app.get("/api/user-leagues")
-def get_user_leagues(phone: str = Query(...)):
-    leagues = load_leagues()
-    joined = []
-    for league, members in leagues.items():
-        if any(u.get('phone') == phone for u in members):
-            joined.append(league)
-    return joined
-
-@app.post("/api/add-score")
-def add_score(data: dict = Body(...)):
-    league = data.get('league')
-    if not league:
-        return {"success": False, "message": "Missing league name"}
-    os.makedirs(SCORES_DIR, exist_ok=True)
-    score_file = os.path.join(SCORES_DIR, f"{league.replace(' ', '_').lower()}_scores.json")
-    # Load existing scores
-    if os.path.exists(score_file):
-        with open(score_file, 'r') as f:
-            try:
-                scores = json.load(f)
-            except Exception:
-                scores = []
-    else:
-        scores = []
-    # Add timestamp
-    data['timestamp'] = datetime.now().isoformat()
-    scores.append(data)
-    with open(score_file, 'w') as f:
-        json.dump(scores, f, indent=2)
-    return {"success": True, "message": "Score saved"}
-
-@app.get("/api/league-scores")
-def get_league_scores(league: str = Query(...)):
-    score_file = os.path.join(SCORES_DIR, f"{league.replace(' ', '_').lower()}_scores.json")
-    if os.path.exists(score_file):
-        with open(score_file, 'r') as f:
-            try:
-                return json.load(f)
-            except Exception:
-                return []
-    return []
-
 
 # ═══════════════════════════════════════════════════════════════════
 #  SPORTS & LEAGUES
@@ -1175,10 +1111,30 @@ def api_submit_doubles_match(data: dict = Body(...)):
     effective_submitter = submitter_player_id or caller["id"]
     admin_submitted_by = caller["id"] if submitter_player_id else None
 
-    # Auto-accept for the submitter (unless admin submitting on behalf)
-    accepted_player_ids: list = []
-    if not submitter_player_id and caller["id"] in all_four:
-        accepted_player_ids = [caller["id"]]
+    now = datetime.now().isoformat()
+
+    # When admin enters a result on behalf of all players (not a participant),
+    # auto-finalize immediately so the score appears in standings right away.
+    admin_entering_on_behalf = bool(submitter_player_id) and caller["id"] not in all_four
+    if admin_entering_on_behalf:
+        accepted_player_ids = list(all_four)
+        sets = score_data.get("sets", [])
+        scoring_fmt = lg.get("rules", {}).get("scoringFormat")
+        if sets:
+            raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
+            winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
+        else:
+            sub_score = score_data.get("submitter", 0)
+            opp_score = score_data.get("opponent", 0)
+            winner_team = "team1" if sub_score >= opp_score else "team2"
+        match_status = "accepted"
+        resolved_at = now
+    else:
+        # Auto-accept for the submitter when they are one of the four players
+        accepted_player_ids = [caller["id"]] if caller["id"] in all_four else []
+        winner_team = None
+        match_status = "pending"
+        resolved_at = None
 
     match = {
         "id": mid,
@@ -1196,9 +1152,10 @@ def api_submit_doubles_match(data: dict = Body(...)):
         "pair1Id": pair1_id,
         "pair2Id": pair2_id,
         "score": score_data,
-        "status": "pending",
-        "submittedAt": datetime.now().isoformat(),
-        "resolvedAt": None,
+        "status": match_status,
+        "submittedAt": now,
+        "resolvedAt": resolved_at,
+        "winnerTeam": winner_team,
         "isPlayoff": False,
     }
     save_match(match)

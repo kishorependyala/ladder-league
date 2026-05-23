@@ -135,7 +135,20 @@ def _next_id(directory: str, prefix: str = "") -> str:
 def next_league_id(sport: str) -> str:
     leagues_dir = os.path.join(_sports_dir(), sport, "leagues")
     os.makedirs(leagues_dir, exist_ok=True)
-    return _next_id(leagues_dir, prefix=f"{sport}_")
+    today = datetime.now().strftime("%Y%m%d")
+    tag = f"{sport}_{today}"
+    # Scan both .json files (legacy) and directories (current folder layout)
+    existing = []
+    for entry in os.listdir(leagues_dir):
+        if entry.startswith(tag):
+            suffix = entry[len(tag):]
+            # Strip .json extension for legacy flat files
+            if suffix.endswith(".json"):
+                suffix = suffix[:-5]
+            if len(suffix) == 10 and suffix.isdigit():
+                existing.append(int(suffix))
+    seq = max(existing, default=0) + 1
+    return f"{tag}{seq:010d}"
 
 
 def next_match_id(sport: str, league_id: str) -> str:

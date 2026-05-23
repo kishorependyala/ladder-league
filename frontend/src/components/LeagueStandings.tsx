@@ -349,7 +349,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ...(!isDoubles ? [['standings', '📊 Standings'], ['breakdown', '📈 Standings Breakdown']] as [StandingsTab, string][] : []),
             ['results', '🎯 Match Results'],
             ['rounds', '📅 Rounds'],
-            ...(!isDoubles ? [['schedule', '📋 Schedule & Pending']] as [StandingsTab, string][] : []),
+            ['schedule', '📋 Schedule & Pending'] as [StandingsTab, string],
             ['rules', '📖 League Rules'],
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
@@ -520,17 +520,21 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
 
         {activeTab === 'schedule' && (
           <div style={{ display: 'grid', gap: '1rem' }}>
-            <div style={{ display: 'grid', gap: '0.25rem' }}>
-              <h3 style={subheading}>Match Schedule</h3>
-              <p style={{ ...mutedText, fontSize: '0.9rem' }}>Enter scores for any pairing that does not already have an accepted result.</p>
-            </div>
-            <MatchGrid
-              league={currentLeague}
-              user={user}
-              matches={matches.filter(match => !match.isPlayoff)}
-              isAdmin={isAdmin}
-              onEnterScore={(p1, p2) => setActiveEnterPair({ p1, p2 })}
-            />
+            {!isDoubles && (
+              <>
+                <div style={{ display: 'grid', gap: '0.25rem' }}>
+                  <h3 style={subheading}>Match Schedule</h3>
+                  <p style={{ ...mutedText, fontSize: '0.9rem' }}>Enter scores for any pairing that does not already have an accepted result.</p>
+                </div>
+                <MatchGrid
+                  league={currentLeague}
+                  user={user}
+                  matches={matches.filter(match => !match.isPlayoff)}
+                  isAdmin={isAdmin}
+                  onEnterScore={(p1, p2) => setActiveEnterPair({ p1, p2 })}
+                />
+              </>
+            )}
 
             <PendingMatches
               matches={pendingMatches}

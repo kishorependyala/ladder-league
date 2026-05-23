@@ -14,16 +14,14 @@ function RankChart({ rounds, breakdown }: { rounds: RoundDef[]; breakdown: Playe
   const totalPlayers = breakdown.length;
   if (totalPlayers === 0) return null;
 
-  // Build unified x-axis: [Start, Round 1, ..., Round N, Current]
-  // "Current" is always appended; if there are no rounds, chart shows Start → Current only.
+  // Build unified x-axis: [Start, Round 1, ..., Round N] (completed rounds only)
   type XPoint = { label: string; key: string };
   const xPoints: XPoint[] = [
     { label: 'Start', key: 'start' },
     ...rounds.map((r, i) => ({ label: r.label, key: `r${i}` })),
-    { label: 'Current', key: 'current' },
   ];
   const totalCols = xPoints.length;
-  if (totalCols < 2) return null;
+  if (totalCols < 1) return null;
 
   const W = 600;
   const H = 260;
@@ -34,20 +32,18 @@ function RankChart({ rounds, breakdown }: { rounds: RoundDef[]; breakdown: Playe
   const chartW = W - padL - padR;
   const chartH = H - padT - padB;
 
-  const xOf = (i: number) => padL + (i / (totalCols - 1)) * chartW;
+  const xOf = (i: number) => totalCols <= 1 ? padL + chartW / 2 : padL + (i / (totalCols - 1)) * chartW;
   const yOf = (rank: number) => padT + ((rank - 1) / (totalPlayers - 1 || 1)) * chartH;
 
-  // For each player build the full array of [start, ...roundRanks, current]
+  // For each player build the full array of [start, ...completedRoundRanks]
   const playerPoints = breakdown.map(player => {
     const pts: { x: number; y: number; label: string; rank: number }[] = [];
     // Start
     pts.push({ x: xOf(0), y: yOf(player.startRank), label: 'Start', rank: player.startRank });
-    // Each round
+    // Each completed round
     player.roundRanks.forEach((rr, ri) => {
       pts.push({ x: xOf(ri + 1), y: yOf(rr.rank), label: rr.label, rank: rr.rank });
     });
-    // Current
-    pts.push({ x: xOf(totalCols - 1), y: yOf(player.currentRank), label: 'Current', rank: player.currentRank });
     return pts;
   });
 
@@ -180,16 +176,32 @@ export default function StandingBreakdown({ league }: Props) {
     return () => { cancelled = true; };
   }, [league.id]);
 
-  // Show rounds most-recent first
-  const displayRounds = useMemo(() => [...rounds].reverse(), [rounds]);
+  // Only show rounds that have fully completed (endDate in the past)
+  const today = new Date().toISOString().slice(0, 10);
+  const completedRounds = useMemo(
+    () => rounds.filter(r => r.endDate < today),
+    [rounds, today],
+  );
+
+  // Filter each player's roundRanks to only completed rounds
+  const filteredBreakdown = useMemo(
+    () => breakdown.map(row => ({
+      ...row,
+      roundRanks: row.roundRanks.filter((_, i) => rounds[i] && rounds[i].endDate < today),
+    })),
+    [breakdown, rounds, today],
+  );
+
+  // Show completed rounds most-recent first
+  const displayRounds = useMemo(() => [...completedRounds].reverse(), [completedRounds]);
 
   if (loading) return <p style={mutedText}>Loading standings breakdown…</p>;
   if (error) return <div style={S.errorBox}>{error}</div>;
-  if (breakdown.length === 0) {
+  if (filteredBreakdown.length === 0) {
     return <p style={mutedText}>No round data yet — submit matches to see breakdown.</p>;
   }
 
-  const total = breakdown.length;
+  const total = filteredBreakdown.length;
 
   return (
     <div style={{ display: 'grid', gap: '1.5rem' }}>
@@ -200,7 +212,7 @@ export default function StandingBreakdown({ league }: Props) {
         <p style={{ ...mutedText, fontSize: '0.85rem', marginBottom: '0.75rem' }}>
           Lower is better — rank 1 is at the top.
         </p>
-        <RankChart rounds={rounds} breakdown={breakdown} />
+        <RankChart rounds={completedRounds} breakdown={filteredBreakdown} />
       </div>
 
       {/* ── Breakdown table ───────────────────────────────────── */}
@@ -215,14 +227,11 @@ export default function StandingBreakdown({ league }: Props) {
                 {displayRounds.map(r => (
                   <th key={r.label} style={thStyle}>{r.label}</th>
                 ))}
-                <th style={{ ...thStyle, background: '#fef3c7', color: '#92400e' }}>Current</th>
               </tr>
             </thead>
             <tbody>
-              {breakdown.map((row, ri) => {
+              {filteredBreakdown.map((row, ri) => {
                 const displayRoundRanks = [...row.roundRanks].reverse();
-                // Delta: current vs start
-                const overallDelta = row.startRank - row.currentRank;
                 return (
                   <tr key={row.playerId} style={{ background: ri % 2 === 0 ? '#fff' : '#fffbeb' }}>
                     <td style={{ ...tdStyle, fontWeight: 700, color: '#78350f' }}>
@@ -255,17 +264,6 @@ export default function StandingBreakdown({ league }: Props) {
                         </td>
                       );
                     })}
-                    {/* Current rank */}
-                    <td style={{ ...tdStyle, background: '#fef9ee', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                        <RankBadge rank={row.currentRank} total={total} />
-                        {overallDelta !== 0 && (
-                          <span style={{ fontSize: '0.75rem', color: overallDelta > 0 ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
-                            {overallDelta > 0 ? `▲${overallDelta}` : `▼${Math.abs(overallDelta)}`}
-                          </span>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                 );
               })}
@@ -274,7 +272,6 @@ export default function StandingBreakdown({ league }: Props) {
         </div>
         <p style={{ ...mutedText, fontSize: '0.78rem', marginTop: '0.5rem' }}>
           <span style={{ color: '#6d28d9', fontWeight: 600 }}>Start</span> = seed rank at league start &nbsp;·&nbsp;
-          <span style={{ color: '#d97706', fontWeight: 600 }}>Current</span> = latest rank &nbsp;·&nbsp;
           ▲ = improved · ▼ = dropped vs previous point
         </p>
       </div>
