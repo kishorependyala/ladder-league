@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { getDisplayName, getTeamFixtures, getTeamStandings, teamEnterFixtureScores, teamRecomputeFixture, teamRenameTeam, type League, type Player, type TeamIndividualRow, type TeamLeagueFixture, type TeamLeagueTeam, type TeamMatchEntry, type TeamStandingsRow, type User } from '../api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SPORT_SCORING, getDisplayName, getTeamFixtures, getTeamStandings, teamEnterFixtureScores, teamRecomputeFixture, teamRenameTeam, unitWinner, type League, type Player, type TeamIndividualRow, type TeamLeagueFixture, type TeamLeagueTeam, type TeamMatchEntry, type TeamStandingsRow, type User } from '../api';
 import { S, mutedText, tableCell, tableHeadCell } from '../theme';
 
 type Props = {
@@ -16,23 +16,47 @@ interface SinglesEntry {
   type: 'singles';
   t1PlayerId: string;
   t2PlayerId: string;
-  sets: SetScore[];
+  sets: Array<SetScore | null>;
 }
 
 interface DoublesEntry {
   type: 'doubles';
   t1PlayerIds: [string, string];
   t2PlayerIds: [string, string];
-  sets: SetScore[];
+  sets: Array<SetScore | null>;
 }
 
 type MatchEntryDraft = SinglesEntry | DoublesEntry;
 
-function emptySet(): SetScore { return { t1: 0, t2: 0 }; }
+/** Returns valid score pairs for one set (winner-first), same logic as SubmitMatch. */
+function validPairs(sport: string) {
+  const cfg = SPORT_SCORING[sport] ?? SPORT_SCORING['tennis'];
+  const raw: Array<[number, number]> = [];
+  const ptw = cfg.points_to_win;
+  const wb = cfg.win_by;
+  const cap = cfg.max_points ?? ptw + 8;
+  for (let l = 0; l <= ptw - wb; l++) { raw.push([ptw, l], [l, ptw]); }
+  for (let w = ptw + 1; w <= cap; w++) {
+    const l = w - wb;
+    raw.push([w, l], [l, w]);
+    if (cfg.max_points && w === cfg.max_points) { if (wb > 1) raw.push([w, w - 1], [w - 1, w]); break; }
+  }
+  const seen = new Set<string>();
+  const wins: Array<{ t1: number; t2: number; label: string }> = [];
+  const losses: Array<{ t1: number; t2: number; label: string }> = [];
+  for (const [a, b] of raw) {
+    const key = `${a}-${b}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const entry = { t1: a, t2: b, label: `${a} – ${b}` };
+    if (a > b) wins.push(entry); else losses.push(entry);
+  }
+  return { wins, losses, cfg };
+}
 
 function makeDraftEntries(numSingles: number, numDoubles: number): MatchEntryDraft[] {
-  const s: MatchEntryDraft[] = Array.from({ length: numSingles }, () => ({ type: 'singles' as const, t1PlayerId: '', t2PlayerId: '', sets: [emptySet()] }));
-  const d: MatchEntryDraft[] = Array.from({ length: numDoubles }, () => ({ type: 'doubles' as const, t1PlayerIds: ['', ''] as [string, string], t2PlayerIds: ['', ''] as [string, string], sets: [emptySet()] }));
+  const s: MatchEntryDraft[] = Array.from({ length: numSingles }, () => ({ type: 'singles' as const, t1PlayerId: '', t2PlayerId: '', sets: [null] }));
+  const d: MatchEntryDraft[] = Array.from({ length: numDoubles }, () => ({ type: 'doubles' as const, t1PlayerIds: ['', ''] as [string, string], t2PlayerIds: ['', ''] as [string, string], sets: [null] }));
   return [...s, ...d];
 }
 
@@ -59,26 +83,87 @@ function validateEntries(entries: MatchEntryDraft[], t1Players: string[], t2Play
       doublesT1.push(k1);
       doublesT2.push(k2);
     }
-    if (e.sets.length === 0) return 'Enter at least one set score.';
+    const completeSets = e.sets.filter(Boolean);
+    if (completeSets.length === 0) return 'Enter at least one set score.';
   }
   return null;
 }
 
-// ── Small score entry helpers ──────────────────────────────────────
-function SetsEditor({ sets, onChange }: { sets: SetScore[]; onChange: (s: SetScore[]) => void }) {
+/** Dropdown-based set score editor matching the Add Score feel. */
+function SetDropdowns({ sport, sets, t1Label, t2Label, onChange }: {
+  sport: string;
+  sets: Array<SetScore | null>;
+  t1Label: string;
+  t2Label: string;
+  onChange: (sets: Array<SetScore | null>) => void;
+}) {
+  const { wins, losses, cfg } = useMemo(() => validPairs(sport), [sport]);
+  const completeSets = sets.filter((s): s is SetScore => s !== null);
+  const t1Wins = completeSets.filter(s => unitWinner(s.t1, s.t2, sport) === 'me').length;
+  const t2Wins = completeSets.filter(s => unitWinner(s.t2, s.t1, sport) === 'me').length;
+  const matchWinner = t1Wins >= cfg.wins_needed ? t1Label : t2Wins >= cfg.wins_needed ? t2Label : null;
+
+  const handleChange = (idx: number, val: string) => {
+    let next: Array<SetScore | null>;
+    if (val === '') {
+      next = sets.map((s, i) => i === idx ? null : s);
+    } else {
+      const [a, b] = val.split('-').map(Number);
+      next = sets.map((s, i) => i === idx ? { t1: a, t2: b } : s);
+    }
+    onChange(next);
+    const score = next[idx];
+    if (score && unitWinner(score.t1, score.t2, sport)) {
+      let mw = 0, ow = 0;
+      next.forEach(s => { if (!s) return; if (unitWinner(s.t1, s.t2, sport) === 'me') mw++; else if (unitWinner(s.t2, s.t1, sport) === 'me') ow++; });
+      if (mw < cfg.wins_needed && ow < cfg.wins_needed && next.length < cfg.max_units) {
+        onChange([...next, null]);
+      }
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
-      {sets.map((s, i) => (
-        <span key={i} style={{ display: 'flex', gap: '0.2rem', alignItems: 'center', background: '#fff', border: '1px solid #fde68a', borderRadius: '0.4rem', padding: '0.15rem 0.3rem' }}>
-          <input type="number" min={0} max={99} value={s.t1} style={{ width: 38, border: 'none', background: 'transparent', textAlign: 'center', fontSize: '0.9rem' }}
-            onChange={e => { const next = sets.map((x, j) => j === i ? { ...x, t1: parseInt(e.target.value) || 0 } : x); onChange(next); }} />
-          <span style={{ color: '#6b7280', fontSize: '0.8rem' }}>–</span>
-          <input type="number" min={0} max={99} value={s.t2} style={{ width: 38, border: 'none', background: 'transparent', textAlign: 'center', fontSize: '0.9rem' }}
-            onChange={e => { const next = sets.map((x, j) => j === i ? { ...x, t2: parseInt(e.target.value) || 0 } : x); onChange(next); }} />
-          {sets.length > 1 && <button onClick={() => onChange(sets.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '0.7rem', padding: 0 }}>✕</button>}
-        </span>
-      ))}
-      <button onClick={() => onChange([...sets, emptySet()])} style={{ background: 'none', border: '1px dashed #d97706', borderRadius: '0.3rem', color: '#d97706', cursor: 'pointer', fontSize: '0.75rem', padding: '0.1rem 0.4rem' }}>+Set</button>
+    <div style={{ display: 'grid', gap: '0.35rem', marginTop: '0.5rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '4rem 1fr', gap: '0.4rem', alignItems: 'center' }}>
+        <span />
+        <span style={{ ...mutedText, fontSize: '0.75rem' }}>{t1Label} – {t2Label}</span>
+      </div>
+      {sets.map((score, i) => {
+        const winner = score ? unitWinner(score.t1, score.t2, sport) : null;
+        const isLocked = matchWinner !== null && i < sets.length - 1;
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '4rem 1fr', gap: '0.4rem', alignItems: 'center' }}>
+            <span style={{ ...mutedText, fontSize: '0.75rem', textAlign: 'right', paddingRight: '0.3rem' }}>{cfg.unit} {i + 1}</span>
+            <select
+              value={score ? `${score.t1}-${score.t2}` : ''}
+              onChange={e => handleChange(i, e.target.value)}
+              disabled={isLocked}
+              style={{
+                ...S.select,
+                fontSize: '0.82rem',
+                borderColor: score && !winner ? '#fca5a5' : score && winner === 'me' ? '#86efac' : score && winner === 'opp' ? '#fca5a5' : undefined,
+                background: score && winner === 'me' ? '#f0fdf4' : score && winner === 'opp' ? '#fef2f2' : undefined,
+                fontWeight: score ? 600 : 400,
+              }}
+            >
+              <option value="">— pick score —</option>
+              <optgroup label={`${t1Label} wins`}>
+                {wins.map(p => <option key={`${p.t1}-${p.t2}`} value={`${p.t1}-${p.t2}`}>{p.label}</option>)}
+              </optgroup>
+              <optgroup label={`${t2Label} wins`}>
+                {losses.map(p => <option key={`${p.t1}-${p.t2}`} value={`${p.t1}-${p.t2}`}>{p.label}</option>)}
+              </optgroup>
+            </select>
+          </div>
+        );
+      })}
+      {(t1Wins > 0 || t2Wins > 0) && (
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.4rem 0.65rem', background: matchWinner ? '#f0fdf4' : '#fffbeb', borderRadius: '0.5rem', border: `1px solid ${matchWinner ? '#86efac' : '#fde68a'}`, marginTop: '0.15rem' }}>
+          <span style={{ fontWeight: 700, color: '#78350f' }}>{t1Wins} – {t2Wins}</span>
+          <span style={{ ...mutedText, fontSize: '0.8rem' }}>{cfg.unit_plural} won</span>
+          {matchWinner && <span style={{ marginLeft: 'auto', fontWeight: 600, color: '#16a34a', fontSize: '0.85rem' }}>🏆 {matchWinner} wins</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -135,9 +220,17 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const addEntry = (fixtureId: string, type: 'singles' | 'doubles') => {
+    const fixture = fixtures.find(f => f.id === fixtureId);
+    const t1Players = fixture ? (teamsMap[fixture.team1Id]?.playerIds ?? []) : [];
+    const t2Players = fixture ? (teamsMap[fixture.team2Id]?.playerIds ?? []) : [];
+    const existingEntries = entryDraft[fixtureId] ?? [];
+    const usedT1 = existingEntries.filter(e => e.type === 'singles').map(e => (e as SinglesEntry).t1PlayerId);
+    const usedT2 = existingEntries.filter(e => e.type === 'singles').map(e => (e as SinglesEntry).t2PlayerId);
+    const nextT1 = t1Players.find(id => !usedT1.includes(id)) ?? t1Players[0] ?? '';
+    const nextT2 = t2Players.find(id => !usedT2.includes(id)) ?? t2Players[0] ?? '';
     const newEntry: MatchEntryDraft = type === 'singles'
-      ? { type: 'singles', t1PlayerId: '', t2PlayerId: '', sets: [emptySet()] }
-      : { type: 'doubles', t1PlayerIds: ['', ''], t2PlayerIds: ['', ''], sets: [emptySet()] };
+      ? { type: 'singles', t1PlayerId: nextT1, t2PlayerId: nextT2, sets: [null] }
+      : { type: 'doubles', t1PlayerIds: [t1Players[0] ?? '', t1Players[1] ?? ''], t2PlayerIds: [t2Players[0] ?? '', t2Players[1] ?? ''], sets: [null] };
     setEntryDraft(prev => ({ ...prev, [fixtureId]: [...(prev[fixtureId] ?? []), newEntry] }));
     setEntryError(prev => ({ ...prev, [fixtureId]: '' }));
   };
@@ -171,8 +264,9 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
     setBusy(f.id); setMsg('');
     try {
       const payload: TeamMatchEntry[] = entries.map(e => {
-        if (e.type === 'singles') return { type: 'singles', team1PlayerIds: [e.t1PlayerId], team2PlayerIds: [e.t2PlayerId], sets: e.sets };
-        return { type: 'doubles', team1PlayerIds: e.t1PlayerIds, team2PlayerIds: e.t2PlayerIds, sets: e.sets };
+        const completeSets = e.sets.filter((s): s is SetScore => s !== null);
+        if (e.type === 'singles') return { type: 'singles', team1PlayerIds: [e.t1PlayerId], team2PlayerIds: [e.t2PlayerId], sets: completeSets };
+        return { type: 'doubles', team1PlayerIds: e.t1PlayerIds, team2PlayerIds: e.t2PlayerIds, sets: completeSets };
       });
       const res = await teamEnterFixtureScores(league.id, f.id, user.phone, payload);
       if (!res.success) throw new Error(res.message);
@@ -376,15 +470,23 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                       const usedT1Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t1PlayerId);
                       const usedT2Singles = entries.filter((x, i) => i !== idx && x.type === 'singles').map(x => (x as SinglesEntry).t2PlayerId);
 
+                      const t1PlayerLabel = isSingles
+                        ? (playerMap[(e as SinglesEntry).t1PlayerId] ? getDisplayName(playerMap[(e as SinglesEntry).t1PlayerId]) : (t1?.name ?? 'Team 1'))
+                        : (t1?.name ?? 'Team 1');
+                      const t2PlayerLabel = isSingles
+                        ? (playerMap[(e as SinglesEntry).t2PlayerId] ? getDisplayName(playerMap[(e as SinglesEntry).t2PlayerId]) : (t2?.name ?? 'Team 2'))
+                        : (t2?.name ?? 'Team 2');
+
                       return (
                         <div key={idx} style={{ border: `2px solid ${isSingles ? '#fde68a' : '#ddd6fe'}`, borderRadius: '0.5rem', padding: '0.6rem 0.75rem', background: isSingles ? '#fffbeb' : '#f5f3ff' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed' }}>{isSingles ? '\ud83c\udfbe' : '\ud83e\udd1d'} {label}</span>
+                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: isSingles ? '#92400e' : '#7c3aed' }}>{isSingles ? '🎾' : '🤝'} {label}</span>
                             <button onClick={() => removeEntry(f.id, idx)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', fontSize: '1rem', padding: '0 0.2rem' }} title="Remove">✕</button>
                           </div>
 
+                          {/* Player selection */}
                           {isSingles ? (
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.4rem', alignItems: 'center' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.4rem', alignItems: 'center', marginBottom: '0.25rem' }}>
                               <div>
                                 <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
                                 {playerSel(t1Players, (e as SinglesEntry).t1PlayerId, v => updateEntry(f.id, idx, { t1PlayerId: v } as any), 'Pick player', usedT1Singles)}
@@ -396,7 +498,7 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                               </div>
                             </div>
                           ) : (
-                            <div style={{ display: 'grid', gap: '0.4rem' }}>
+                            <div style={{ display: 'grid', gap: '0.35rem', marginBottom: '0.25rem' }}>
                               <div>
                                 <div style={{ fontSize: '0.68rem', color: '#78350f', fontWeight: 600, marginBottom: '0.15rem' }}>{t1?.name}</div>
                                 <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -417,21 +519,14 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
                             </div>
                           )}
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                            <span style={{ fontSize: '0.75rem', color: '#6b7280', minWidth: 32 }}>Sets:</span>
-                            <SetsEditor sets={e.sets} onChange={sets => updateEntry(f.id, idx, { sets } as any)} />
-                          </div>
-
-                          {(() => {
-                            const t1w = e.sets.filter(s => s.t1 > s.t2).length;
-                            const t2w = e.sets.filter(s => s.t2 > s.t1).length;
-                            if (t1w === 0 && t2w === 0) return null;
-                            return (
-                              <div style={{ fontSize: '0.75rem', color: '#16a34a', fontWeight: 600, marginTop: '0.3rem' }}>
-                                {t1w > t2w ? (t1?.name ?? 'Team 1') : (t2?.name ?? 'Team 2')} wins ({t1w}\u2013{t2w} sets)
-                              </div>
-                            );
-                          })()}
+                          {/* Set score dropdowns — same feel as Add Score */}
+                          <SetDropdowns
+                            sport={league.sport}
+                            sets={e.sets}
+                            t1Label={t1PlayerLabel}
+                            t2Label={t2PlayerLabel}
+                            onChange={sets => updateEntry(f.id, idx, { sets } as any)}
+                          />
                         </div>
                       );
                     })}
@@ -440,7 +535,7 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
 
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <button style={{ ...S.smallBtn, background: '#16a34a' }} disabled={busy === f.id} onClick={() => handleSubmitScores(f)}>
-                        {busy === f.id ? '\u23f3 Saving\u2026' : `\u2705 Save ${entries.length} match${entries.length !== 1 ? 'es' : ''}`}
+                        {busy === f.id ? '⏳ Saving…' : `✅ Save ${entries.length} match${entries.length !== 1 ? 'es' : ''}`}
                       </button>
                       <button style={S.smallOutlineBtn} onClick={() => cancelEntry(f.id)}>✕ Cancel</button>
                     </div>
