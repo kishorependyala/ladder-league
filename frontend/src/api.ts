@@ -340,8 +340,13 @@ export function createLeague(
   startDate: string,
   endDate: string,
   rules?: Partial<LeagueRules>,
+  leagueType?: string,
 ): Promise<{ success: boolean; league: League }> {
-  return post('/api/leagues/create', { phone, name, sport, startDate, endDate, ...(rules ? { rules } : {}) });
+  return post('/api/leagues/create', { phone, name, sport, startDate, endDate, ...(rules ? { rules } : {}), ...(leagueType ? { leagueType } : {}) });
+}
+
+export function convertToTeamLeague(leagueId: string, phone: string): Promise<{ success: boolean; league?: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/convert-to-team`, { phone });
 }
 
 export function joinLeague(id: string, phone: string): Promise<{ success: boolean; league: League; message?: string }> {

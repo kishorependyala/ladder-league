@@ -419,6 +419,7 @@ def api_create_league(data: dict = Body(...)):
 
     lid = next_league_id(sport)
     rules = {**default_rules(), **data.get("rules", {})}
+    league_type = data.get("leagueType", "")
     league = {
         "id": lid,
         "name": data.get("name", "").strip(),
@@ -433,8 +434,34 @@ def api_create_league(data: dict = Body(...)):
         "finalRanking": [],
         "createdAt": datetime.now().isoformat(),
     }
+    if league_type == "team":
+        league["leagueType"] = "team"
+        league["phase"] = "ranking"  # start with ranking to seed teams
     save_league(league)
     return {"success": True, "league": league}
+
+
+@app.post("/api/leagues/{league_id}/convert-to-team")
+def api_convert_to_team(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    user = get_user_by_phone(phone)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    if not is_super_admin(phone) and user["id"] not in lg.get("adminIds", []):
+        return {"success": False, "message": "Not authorized"}
+    if lg.get("leagueType") == "team":
+        return {"success": False, "message": "Already a team league"}
+    lg["leagueType"] = "team"
+    # If rankings exist, go straight to team_formation; else stay at ranking
+    if lg.get("finalRanking") or lg.get("status") in ("ranked", "active"):
+        lg["phase"] = "team_formation"
+    else:
+        lg["phase"] = "ranking"
+    save_league(lg)
+    return {"success": True, "league": lg}
 
 
 @app.post("/api/leagues/{league_id}/add-admin")

@@ -608,7 +608,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [matchFormat, setMatchFormat] = useState<'adhoc' | 'round-robin'>('adhoc');
-  const [doublesMode, setDoublesMode] = useState<'' | 'none' | 'adhoc' | 'fixed_pairs'>('');
+  const [leagueMode, setLeagueMode] = useState<'' | 'singles' | 'doubles_adhoc' | 'doubles_fixed' | 'team'>('');
   const [scoringWin, setScoringWin] = useState(3);
   const [scoringLoss, setScoringLoss] = useState(0);
   const [scoringNoGame, setScoringNoGame] = useState(-1);
@@ -619,6 +619,10 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [useLateJoinCap, setUseLateJoinCap] = useState(false);
   const [lateJoinCap, setLateJoinCap] = useState(5);
   const [busy, setBusy] = useState(false);
+
+  // Derived values from leagueMode
+  const doublesMode = leagueMode === 'doubles_adhoc' ? 'adhoc' : leagueMode === 'doubles_fixed' ? 'fixed_pairs' : leagueMode === 'team' ? 'adhoc' : leagueMode === 'singles' ? 'none' : '';
+  const isTeam = leagueMode === 'team';
 
   const sportScoring = SPORT_SCORING[sport];
 
@@ -636,12 +640,12 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   ];
 
   const handleCreate = async () => {
-    if (!name || !sport || !start || !end || !doublesMode) { onFail('All fields are required, including league type (Singles or Doubles).'); return; }
+    if (!name || !sport || !start || !end || !leagueMode) { onFail('All fields are required, including league type.'); return; }
     setBusy(true);
     try {
       const rules = {
         matchFormat,
-        doublesMode,
+        doublesMode: doublesMode as 'none' | 'adhoc' | 'fixed_pairs',
         scoring: { win: scoringWin, loss: scoringLoss, noGame: scoringNoGame },
         minMatchesPerWeek,
         upsetBonus,
@@ -649,10 +653,10 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
         newPlayerRankPolicy: rankPolicy,
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
       };
-      const res = await createLeague(sessionUser.phone, name, sport, start, end, rules);
+      const res = await createLeague(sessionUser.phone, name, sport, start, end, rules, isTeam ? 'team' : undefined);
       onCreated(res.league);
       setName(''); setSport(''); setStart(''); setEnd('');
-      setMatchFormat('adhoc'); setDoublesMode('');
+      setMatchFormat('adhoc'); setLeagueMode('');
       setScoringWin(3); setScoringLoss(0); setScoringNoGame(-1);
       setMinMatchesPerWeek(1); setUpsetBonus(1);
       setJoinPolicy('draft_only'); setRankPolicy('bottom');
@@ -699,32 +703,41 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       {/* League type — mandatory */}
       <SectionBox title="🎾 League type *">
         <div style={{ display: 'grid', gap: '0.35rem' }}>
-          {!doublesMode && (
+          {!leagueMode && (
             <div style={{ fontSize: '0.8rem', background: '#fef9c3', border: '1px solid #fde047', borderRadius: '0.5rem', padding: '0.45rem 0.75rem', color: '#854d0e', fontWeight: 600 }}>
               ⚠️ You must choose a league type before continuing.
             </div>
           )}
           <PillGroup
-            value={doublesMode}
-            onChange={setDoublesMode}
+            value={leagueMode}
+            onChange={setLeagueMode}
             options={[
-              { value: 'none',        label: '🎾 Singles',              desc: 'Traditional 1v1 matches only' },
-              { value: 'adhoc',       label: '🏸 Doubles — Ad-hoc',     desc: 'Any 4 players from the league form teams each match' },
-              { value: 'fixed_pairs', label: '🏸 Doubles — Fixed pairs', desc: 'Admin registers fixed pairs; only pairs compete' },
+              { value: 'singles',        label: '🎾 Singles',              desc: 'Traditional 1v1 matches only' },
+              { value: 'doubles_adhoc',  label: '🏸 Doubles — Ad-hoc',     desc: 'Any 4 players from the league form teams each match' },
+              { value: 'doubles_fixed',  label: '🏸 Doubles — Fixed pairs', desc: 'Admin registers fixed pairs; only pairs compete' },
+              { value: 'team',           label: '🏆 Team League',           desc: 'Players rank individually, then form balanced teams for round-robin competition' },
             ]}
           />
-          {doublesMode && doublesMode !== 'none' && (
+          {leagueMode === 'doubles_adhoc' && (
             <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '3px solid #fde68a' }}>
-              {doublesMode === 'adhoc'
-                ? 'Any 4 players in the league can form ad-hoc doubles teams. Same matchup is limited to twice per week.'
-                : 'Admin registers fixed pairs. Only registered pairs can compete in doubles matches.'}
+              Any 4 players in the league can form ad-hoc doubles teams. Same matchup is limited to twice per week.
+            </div>
+          )}
+          {leagueMode === 'doubles_fixed' && (
+            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '3px solid #fde68a' }}>
+              Admin registers fixed pairs. Only registered pairs can compete in doubles matches.
+            </div>
+          )}
+          {leagueMode === 'team' && (
+            <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.25rem', paddingLeft: '0.5rem', borderLeft: '3px solid #86efac', background: '#f0fdf4', borderRadius: '0 0.4rem 0.4rem 0', padding: '0.4rem 0.6rem' }}>
+              <strong style={{ color: '#16a34a' }}>Team League flow:</strong> Players join → ranking phase to establish seed order → admin groups into balanced teams (snake draft) → round-robin team fixtures with individual matches.
             </div>
           )}
         </div>
       </SectionBox>
 
       {/* Remaining sections — only visible once league type is chosen */}
-      {doublesMode && (<>
+      {leagueMode && !isTeam && (<>
         <SectionBox title="🎮 Game format">
           <div style={{ display: 'grid', gap: '0.35rem' }}>
             <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Match scheduling</label>
@@ -800,6 +813,13 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
           {busy ? 'Creating…' : '+ Create league'}
         </button>
       </>)}
+
+      {/* Team league: just show create button (no extra settings needed at creation) */}
+      {isTeam && (
+        <button style={{ ...S.primaryBtn, background: '#16a34a' }} disabled={busy} onClick={handleCreate}>
+          {busy ? 'Creating…' : '🏆 Create Team League'}
+        </button>
+      )}
     </div>
   );
 }

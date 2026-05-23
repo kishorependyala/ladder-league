@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, finalizeRanking, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -475,6 +475,24 @@ function LeagueCard({
               return r.league;
             })}>
               🏆 Start Playoffs
+            </button>
+          )}
+          {!league.leagueType && ['draft', 'ranking', 'ranked', 'active'].includes(league.status) && (
+            <button
+              style={{ ...S.smallOutlineBtn, borderColor: '#86efac', color: '#16a34a', fontSize: '0.8rem' }}
+              disabled={!!busyId}
+              title="Convert this league to Team League format. Players will be ranked then grouped into balanced teams."
+              onClick={() => {
+                if (!window.confirm('Convert this league to Team League format? This will set leagueType=team. Rankings will be used to form balanced teams.')) return;
+                act(`convert-team-${league.id}`, async () => {
+                  const r = await convertToTeamLeague(league.id, user.phone);
+                  if (!r.success || !r.league) throw new Error(r.message || 'Conversion failed');
+                  setMessage('✅ Converted to Team League. Go to the Team Formation tab to group players.');
+                  return r.league;
+                });
+              }}
+            >
+              🏆 Convert to Team League
             </button>
           )}
         </div>
