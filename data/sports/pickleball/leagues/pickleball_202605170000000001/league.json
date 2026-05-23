@@ -1,0 +1,94 @@
+{
+  "id": "pickleball_202605170000000001",
+  "name": "Monroe Pickleball Singles Ladder league - May/June",
+  "sport": "pickleball",
+  "status": "active",
+  "adminIds": [
+    "202605160000000001"
+  ],
+  "players": [
+    {
+      "id": "202605160000000001",
+      "phone": "7327184414",
+      "firstName": "Kishore",
+      "lastName": "Pendyala"
+    },
+    {
+      "id": "202605160000000008",
+      "phone": "9849740197",
+      "firstName": "Player",
+      "lastName": "2"
+    },
+    {
+      "id": "202605160000000009",
+      "phone": "1234567890",
+      "firstName": "Player",
+      "lastName": "3"
+    }
+  ],
+  "startDate": "2026-05-17",
+  "endDate": "2026-06-30",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    },
+    "scoringFormat": null,
+    "matchFormat": "adhoc",
+    "minMatchesPerWeek": 1,
+    "penaltyPerMissedWeek": 1,
+    "upsetBonus": 1,
+    "joinPolicy": "until_complete",
+    "newPlayerRankPolicy": "bottom",
+    "lateJoinCap": null
+  },
+  "stackRanks": {
+    "202605160000000001": [
+      "202605160000000001"
+    ]
+  },
+  "finalRanking": [
+    "202605160000000001",
+    "202605160000000008",
+    "202605160000000009"
+  ],
+  "createdAt": "2026-05-17T16:32:56.091899",
+  "startedAt": "2026-05-19T02:41:13.562034",
+  "blocks": [
+    {
+      "index": 0,
+      "startDate": "2026-05-17",
+      "endDate": "2026-05-24"
+    },
+    {
+      "index": 1,
+      "startDate": "2026-05-24",
+      "endDate": "2026-05-31"
+    },
+    {
+      "index": 2,
+      "startDate": "2026-05-31",
+      "endDate": "2026-06-07"
+    },
+    {
+      "index": 3,
+      "startDate": "2026-06-07",
+      "endDate": "2026-06-14"
+    },
+    {
+      "index": 4,
+      "startDate": "2026-06-14",
+      "endDate": "2026-06-21"
+    },
+    {
+      "index": 5,
+      "startDate": "2026-06-21",
+      "endDate": "2026-06-28"
+    }
+  ]
+}

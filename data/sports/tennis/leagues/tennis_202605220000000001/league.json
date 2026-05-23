@@ -1,0 +1,118 @@
+{
+  "id": "tennis_202605220000000001",
+  "name": "Monroe Tennis Doubles Ladder League",
+  "sport": "tennis",
+  "status": "active",
+  "adminIds": [
+    "202605160000000001"
+  ],
+  "players": [
+    {
+      "id": "202605160000000001",
+      "phone": "7327184414",
+      "firstName": "Kishore",
+      "lastName": "Pendyala"
+    },
+    {
+      "id": "202605170000000007",
+      "phone": "19177035502",
+      "firstName": "Ganesh",
+      "lastName": "Manickam"
+    },
+    {
+      "id": "202605170000000006",
+      "phone": "7133809026",
+      "firstName": "Dickson",
+      "lastName": "Rodrigues"
+    },
+    {
+      "id": "202605170000000001",
+      "phone": "5088739124",
+      "firstName": "Vinodh",
+      "lastName": "Thandasa"
+    }
+  ],
+  "startDate": "2026-05-22",
+  "endDate": "2026-07-31",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    },
+    "scoringFormat": null,
+    "matchFormat": "adhoc",
+    "minMatchesPerWeek": 1,
+    "penaltyPerMissedWeek": 1,
+    "upsetBonus": 1,
+    "joinPolicy": "until_complete",
+    "newPlayerRankPolicy": "bottom",
+    "lateJoinCap": null,
+    "doublesMode": "adhoc"
+  },
+  "stackRanks": {},
+  "finalRanking": [
+    "202605160000000001",
+    "202605170000000007",
+    "202605170000000006",
+    "202605170000000001"
+  ],
+  "createdAt": "2026-05-22T10:05:06.468527",
+  "startedAt": "2026-05-22T10:06:23.180807",
+  "blocks": [
+    {
+      "index": 0,
+      "startDate": "2026-05-22",
+      "endDate": "2026-05-29"
+    },
+    {
+      "index": 1,
+      "startDate": "2026-05-29",
+      "endDate": "2026-06-05"
+    },
+    {
+      "index": 2,
+      "startDate": "2026-06-05",
+      "endDate": "2026-06-12"
+    },
+    {
+      "index": 3,
+      "startDate": "2026-06-12",
+      "endDate": "2026-06-19"
+    },
+    {
+      "index": 4,
+      "startDate": "2026-06-19",
+      "endDate": "2026-06-26"
+    },
+    {
+      "index": 5,
+      "startDate": "2026-06-26",
+      "endDate": "2026-07-03"
+    },
+    {
+      "index": 6,
+      "startDate": "2026-07-03",
+      "endDate": "2026-07-10"
+    },
+    {
+      "index": 7,
+      "startDate": "2026-07-10",
+      "endDate": "2026-07-17"
+    },
+    {
+      "index": 8,
+      "startDate": "2026-07-17",
+      "endDate": "2026-07-24"
+    },
+    {
+      "index": 9,
+      "startDate": "2026-07-24",
+      "endDate": "2026-07-31"
+    }
+  ]
+}

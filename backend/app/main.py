@@ -953,15 +953,8 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
             m["status"] = "accepted"
             m["resolvedAt"] = datetime.now().isoformat()
             score = m.get("score", {})
-            sets = score.get("sets", [])
             scoring_fmt = lg.get("rules", {}).get("scoringFormat")
-            if sets:
-                raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
-                m["winnerTeam"] = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
-            else:
-                sub_score = score.get("submitter", 0)
-                opp_score = score.get("opponent", 0)
-                m["winnerTeam"] = "team1" if sub_score >= opp_score else "team2"
+            m["winnerTeam"] = _resolve_winner_team(score, lg["sport"], scoring_fmt)
 
         if is_admin:
             # Admin can always bulk-accept on behalf of all players
@@ -1282,6 +1275,27 @@ def _get_player_first(lg: dict, pid: str) -> str:
     return pid[:6]
 
 
+def _resolve_winner_team(score: dict, sport: str, scoring_fmt) -> str:
+    """Determine winnerTeam ('team1'/'team2') from score using all available signals.
+    Priority: compute_match_winner on sets → score.submitterWon → numeric score."""
+    sets = score.get("sets", [])
+    if sets:
+        raw = compute_match_winner(sets, sport, scoring_fmt)
+        if raw == "submitter":
+            return "team1"
+        if raw == "opponent":
+            return "team2"
+        # sets present but inconclusive (e.g. only 1 set recorded) — fall through
+    submitter_won = score.get("submitterWon")
+    if submitter_won is True:
+        return "team1"
+    if submitter_won is False:
+        return "team2"
+    sub_score = score.get("submitter", 0)
+    opp_score = score.get("opponent", 0)
+    return "team1" if sub_score >= opp_score else "team2"
+
+
 def _sets_games_for_team(sets: list, for_team1: bool) -> tuple[int, int]:
     """Return (sets_won, games_won) for team1 (submitter) or team2 (opponent)."""
     sets_won = 0
@@ -1326,13 +1340,7 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
         raw_sets = score.get("sets", [])
         if not winner_team:
             scoring_fmt = rules.get("scoringFormat")
-            if raw_sets:
-                raw = compute_match_winner(raw_sets, lg["sport"], scoring_fmt)
-                winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
-            else:
-                sub_score = score.get("submitter", 0)
-                opp_score = score.get("opponent", 0)
-                winner_team = "team1" if sub_score >= opp_score else "team2"
+            winner_team = _resolve_winner_team(score, lg["sport"], scoring_fmt)
         if not winner_team:
             continue
 
@@ -1421,13 +1429,7 @@ def _compute_doubles_standings(lg: dict) -> dict:
         raw_sets = score.get("sets", [])
         if not winner_team:
             scoring_fmt = rules.get("scoringFormat")
-            if raw_sets:
-                raw = compute_match_winner(raw_sets, lg["sport"], scoring_fmt)
-                winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
-            else:
-                sub_score = score.get("submitter", 0)
-                opp_score = score.get("opponent", 0)
-                winner_team = "team1" if sub_score >= opp_score else "team2"
+            winner_team = _resolve_winner_team(score, lg["sport"], scoring_fmt)
         if not winner_team:
             continue
 

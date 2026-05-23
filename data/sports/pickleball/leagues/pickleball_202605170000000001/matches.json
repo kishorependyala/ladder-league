@@ -1,0 +1,64 @@
+[
+  {
+    "id": "202605190000000001",
+    "leagueId": "pickleball_202605170000000001",
+    "sport": "pickleball",
+    "submitterId": "202605160000000001",
+    "opponentId": "202605160000000008",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 11,
+          "opp": 2
+        },
+        {
+          "me": 11,
+          "opp": 7
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-19T02:42:56.248812",
+    "resolvedAt": "2026-05-19T02:43:04.373423",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "winner": "submitter",
+    "datePlayed": "2026-05-19"
+  },
+  {
+    "id": "202605190000000002",
+    "leagueId": "pickleball_202605170000000001",
+    "sport": "pickleball",
+    "submitterId": "202605160000000001",
+    "opponentId": "202605160000000009",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 12,
+          "opp": 10
+        },
+        {
+          "me": 11,
+          "opp": 7
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-19T02:51:51.860609",
+    "resolvedAt": "2026-05-19T02:52:13.841252",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "winner": "submitter",
+    "datePlayed": "2026-05-19"
+  }
+]

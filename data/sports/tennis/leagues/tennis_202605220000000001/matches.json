@@ -1,0 +1,170 @@
+[
+  {
+    "id": "202605220000000001",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605170000000007"
+    ],
+    "team2PlayerIds": [
+      "202605170000000006",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000006",
+      "202605170000000001",
+      "202605170000000007"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 2,
+          "opp": 6
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-22T11:11:36.918150",
+    "resolvedAt": "2026-05-23T00:41:06.446401",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-22",
+    "winnerTeam": null
+  },
+  {
+    "id": "202605220000000002",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605170000000006"
+    ],
+    "team2PlayerIds": [
+      "202605170000000007",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000006",
+      "202605170000000001",
+      "202605170000000007"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 2,
+          "opp": 6
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-22T11:59:15.304937",
+    "resolvedAt": "2026-05-23T00:41:08.373860",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-22",
+    "winnerTeam": null
+  },
+  {
+    "id": "202605220000000003",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605170000000006",
+      "202605170000000007"
+    ],
+    "team2PlayerIds": [
+      "202605160000000001",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000006",
+      "202605170000000001",
+      "202605170000000007"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 3
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-22T11:59:31.008870",
+    "resolvedAt": "2026-05-23T00:41:07.406927",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-22",
+    "winnerTeam": null
+  },
+  {
+    "id": "202605230000000001",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605170000000007"
+    ],
+    "team2PlayerIds": [
+      "202605170000000006",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000007",
+      "202605170000000006",
+      "202605170000000001"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 5,
+          "opp": 7
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-23T01:16:07.297759",
+    "resolvedAt": "2026-05-23T01:19:23.128435",
+    "winnerTeam": null,
+    "isPlayoff": false,
+    "datePlayed": "2026-05-23"
+  }
+]

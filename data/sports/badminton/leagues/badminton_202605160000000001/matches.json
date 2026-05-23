@@ -1,0 +1,90 @@
+[
+  {
+    "id": "202605210000000001",
+    "leagueId": "badminton_202605160000000001",
+    "sport": "badminton",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605160000000002"
+    ],
+    "team2PlayerIds": [
+      "202605160000000003",
+      "202605160000000006"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 21,
+          "opp": 5
+        },
+        {
+          "me": 21,
+          "opp": 6
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "pending",
+    "submittedAt": "2026-05-21T23:05:43.878538",
+    "resolvedAt": null,
+    "isPlayoff": false,
+    "datePlayed": "2026-05-21"
+  },
+  {
+    "id": "202605220000000001",
+    "leagueId": "badminton_202605160000000001",
+    "sport": "badminton",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000004",
+      "202605160000000003"
+    ],
+    "team2PlayerIds": [
+      "202605160000000002",
+      "202605160000000005"
+    ],
+    "submitterId": "202605160000000004",
+    "opponentId": null,
+    "adminSubmittedBy": "202605160000000001",
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000004",
+      "202605160000000003",
+      "202605160000000002",
+      "202605160000000005"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 21,
+          "opp": 0
+        },
+        {
+          "me": 21,
+          "opp": 1
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-22T02:43:14.347944",
+    "resolvedAt": "2026-05-22T02:43:21.171926",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-22",
+    "winnerTeam": "team1"
+  }
+]

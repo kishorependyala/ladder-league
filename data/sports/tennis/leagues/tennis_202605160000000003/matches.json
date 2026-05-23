@@ -1,0 +1,156 @@
+[
+  {
+    "id": "202605210000000001",
+    "leagueId": "tennis_202605160000000003",
+    "sport": "tennis",
+    "submitterId": "202605170000000007",
+    "opponentId": "202605170000000010",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 3,
+          "opp": 6
+        },
+        {
+          "me": 0,
+          "opp": 6
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-21T11:35:21.407874",
+    "resolvedAt": "2026-05-21T14:00:32.541226",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "datePlayed": "2026-05-21",
+    "winner": "opponent"
+  },
+  {
+    "id": "202605210000000002",
+    "leagueId": "tennis_202605160000000003",
+    "sport": "tennis",
+    "submitterId": "202605170000000010",
+    "opponentId": "202605170000000007",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 3
+        },
+        {
+          "me": 6,
+          "opp": 0
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "rejected",
+    "submittedAt": "2026-05-21T11:46:07.948376",
+    "resolvedAt": "2026-05-21T13:42:21.074555",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "datePlayed": "2026-05-21",
+    "rejectionNote": ""
+  },
+  {
+    "id": "202605210000000003",
+    "leagueId": "tennis_202605160000000003",
+    "sport": "tennis",
+    "submitterId": "202605170000000010",
+    "opponentId": "202605170000000007",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 3
+        },
+        {
+          "me": 6,
+          "opp": 0
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "rejected",
+    "submittedAt": "2026-05-21T12:02:49.521102",
+    "resolvedAt": "2026-05-21T13:42:19.279972",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "datePlayed": "2026-05-21",
+    "rejectionNote": ""
+  },
+  {
+    "id": "202605210000000004",
+    "leagueId": "tennis_202605160000000003",
+    "sport": "tennis",
+    "submitterId": "202605170000000007",
+    "opponentId": "202605170000000010",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 3,
+          "opp": 6
+        },
+        {
+          "me": 0,
+          "opp": 6
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "rejected",
+    "submittedAt": "2026-05-21T13:19:00.284016",
+    "resolvedAt": "2026-05-21T13:42:17.058098",
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "datePlayed": "2026-05-21",
+    "rejectionNote": ""
+  },
+  {
+    "id": "202605210000000005",
+    "leagueId": "tennis_202605160000000003",
+    "sport": "tennis",
+    "submitterId": "202605170000000010",
+    "opponentId": "202605170000000007",
+    "adminSubmittedBy": null,
+    "requiresBothAccept": false,
+    "acceptedSides": [],
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 3
+        },
+        {
+          "me": 6,
+          "opp": 0
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "pending",
+    "submittedAt": "2026-05-21T14:00:29.044150",
+    "resolvedAt": null,
+    "isPlayoff": false,
+    "playoffGroup": null,
+    "playoffMatchupId": null,
+    "datePlayed": "2026-05-21"
+  }
+]

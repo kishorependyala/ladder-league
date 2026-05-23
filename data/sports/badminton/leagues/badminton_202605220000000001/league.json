@@ -1,0 +1,48 @@
+{
+  "id": "badminton_202605220000000001",
+  "name": "Test",
+  "sport": "badminton",
+  "status": "draft",
+  "adminIds": [
+    "202605160000000001"
+  ],
+  "players": [
+    {
+      "id": "202605160000000001",
+      "phone": "7327184414",
+      "firstName": "Kishore",
+      "lastName": "Pendyala"
+    }
+  ],
+  "startDate": "2026-05-21",
+  "endDate": "2026-05-30",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    },
+    "scoringFormat": {
+      "wins_needed": 2,
+      "max_units": 3,
+      "points_to_win": 21,
+      "win_by": 2,
+      "max_points": null
+    },
+    "matchFormat": "adhoc",
+    "minMatchesPerWeek": 1,
+    "penaltyPerMissedWeek": 1,
+    "upsetBonus": 0,
+    "joinPolicy": "until_complete",
+    "newPlayerRankPolicy": "bottom",
+    "lateJoinCap": null,
+    "doublesMode": "none"
+  },
+  "stackRanks": {},
+  "finalRanking": [],
+  "createdAt": "2026-05-22T00:55:12.097291"
+}
