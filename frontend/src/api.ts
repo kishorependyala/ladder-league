@@ -592,8 +592,8 @@ export function dataReadFile(phone: string, path: string): Promise<{ success: bo
   return get(`/api/admin/data/file?phone=${encodeURIComponent(phone)}&path=${encodeURIComponent(path)}`);
 }
 
-export function dataDownloadUrl(phone: string): string {
-  return `${API_BASE}/api/admin/data/download?phone=${encodeURIComponent(phone)}`;
+export function dataDownloadUrl(phone: string, path = ''): string {
+  return `${API_BASE}/api/admin/data/download?phone=${encodeURIComponent(phone)}&path=${encodeURIComponent(path)}`;
 }
 
 export interface DataIssue {

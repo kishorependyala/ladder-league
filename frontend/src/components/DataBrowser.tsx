@@ -69,28 +69,33 @@ export default function DataBrowser({ phone }: Props) {
         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 600, whiteSpace: 'nowrap' }}>DATA DIR</span>
         <code style={{ color: '#a3e635', fontSize: '0.85rem', wordBreak: 'break-all', flex: 1 }}>{dataDir || '…'}</code>
         <a
-          href={dataDownloadUrl(phone)}
-          download="ladder-league-data.zip"
+          href={dataDownloadUrl(phone, path)}
+          download
           style={{ ...S.smallBtn, textDecoration: 'none', whiteSpace: 'nowrap', fontSize: '0.8rem' }}
         >
-          ⬇ Download all
+          ⬇ Download {path ? 'folder' : 'all'}
         </a>
       </div>
 
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap', fontSize: '0.88rem' }}>
-        <button style={{ ...S.linkBtn, fontWeight: 700, color: '#f59e0b' }} onClick={() => load('')}>root</button>
-        {segments.map((seg, i) => (
-          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ color: '#d1d5db' }}>/</span>
-            <button
-              style={{ ...S.linkBtn, color: i === segments.length - 1 ? '#78350f' : '#f59e0b', fontWeight: i === segments.length - 1 ? 700 : 400 }}
-              onClick={() => load(crumbPaths[i])}
-            >
-              {seg}
-            </button>
-          </span>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap', fontSize: '0.88rem', background: '#f8fafc', borderRadius: '0.5rem', padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0' }}>
+        <span style={{ color: '#94a3b8', fontSize: '0.75rem', fontWeight: 600, marginRight: '0.2rem' }}>📂</span>
+        <button style={{ ...S.linkBtn, fontWeight: 700, color: path ? '#f59e0b' : '#92400e' }} onClick={() => load('')}>root</button>
+        {segments.map((seg, i) => {
+          const isCurrent = i === segments.length - 1;
+          return (
+            <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ color: '#94a3b8' }}>/</span>
+              {isCurrent ? (
+                <span style={{ fontWeight: 700, color: '#1e293b' }}>{seg}</span>
+              ) : (
+                <button style={{ ...S.linkBtn, color: '#f59e0b', fontWeight: 500 }} onClick={() => load(crumbPaths[i])}>
+                  {seg}
+                </button>
+              )}
+            </span>
+          );
+        })}
       </div>
 
       {error && <div style={S.errorBox}>{error}</div>}
@@ -108,14 +113,14 @@ export default function DataBrowser({ phone }: Props) {
                 <th style={{ textAlign: 'left', padding: '0.6rem 1rem', color: '#92400e', fontWeight: 700 }}>Name</th>
                 <th style={{ textAlign: 'right', padding: '0.6rem 0.75rem', color: '#92400e', fontWeight: 700, whiteSpace: 'nowrap' }}>Size</th>
                 <th style={{ textAlign: 'right', padding: '0.6rem 1rem', color: '#92400e', fontWeight: 700, whiteSpace: 'nowrap' }}>Modified</th>
+                <th style={{ padding: '0.6rem 0.75rem' }} />
               </tr>
             </thead>
             <tbody>
-              {/* Parent dir link */}
               {path && (
                 <tr style={{ borderBottom: '1px solid #f3f4f6', cursor: 'pointer' }} onClick={() => load(crumbPaths.length > 1 ? crumbPaths[crumbPaths.length - 2] : '')}>
                   <td style={{ padding: '0.55rem 1rem', color: '#f59e0b', fontWeight: 600 }}>📁 ..</td>
-                  <td /><td />
+                  <td /><td /><td />
                 </tr>
               )}
               {entries.map((entry, i) => (
@@ -130,6 +135,18 @@ export default function DataBrowser({ phone }: Props) {
                   <td style={{ padding: '0.55rem 0.75rem', textAlign: 'right', ...mutedText }}>{formatSize(entry.size)}</td>
                   <td style={{ padding: '0.55rem 1rem', textAlign: 'right', ...mutedText, fontSize: '0.78rem' }}>
                     {new Date(entry.modified).toLocaleString()}
+                  </td>
+                  <td style={{ padding: '0.55rem 0.5rem', textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                    <a
+                      href={dataDownloadUrl(phone, entry.path)}
+                      download
+                      title={entry.type === 'dir' ? 'Download folder as zip' : 'Download file'}
+                      style={{ color: '#94a3b8', textDecoration: 'none', fontSize: '0.85rem', padding: '0.1rem 0.3rem', borderRadius: '0.25rem' }}
+                      onMouseOver={e => (e.currentTarget.style.color = '#f59e0b')}
+                      onMouseOut={e => (e.currentTarget.style.color = '#94a3b8')}
+                    >
+                      ⬇
+                    </a>
                   </td>
                 </tr>
               ))}

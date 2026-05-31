@@ -2161,21 +2161,37 @@ def api_data_file(phone: str = Query(...), path: str = Query(...)):
 
 
 @app.get("/api/admin/data/download")
-def api_data_download(phone: str = Query(...)):
+def api_data_download(phone: str = Query(...), path: str = Query("")):
     if not is_super_admin(phone):
         return {"success": False, "message": "Not authorized"}
+    # Resolve and validate path
+    base = os.path.realpath(DATA_DIR)
+    target = os.path.realpath(os.path.join(DATA_DIR, path)) if path else base
+    if not target.startswith(base):
+        return {"success": False, "message": "Invalid path"}
+    if not os.path.exists(target):
+        return {"success": False, "message": "Path not found"}
+    if not os.path.isdir(target):
+        # Single file download
+        fname = os.path.basename(target)
+        return StreamingResponse(
+            open(target, "rb"),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f"attachment; filename={fname}"},
+        )
+    folder_name = os.path.basename(target) if path else "ladder-league-data"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _, files in os.walk(DATA_DIR):
+        for root, _, files in os.walk(target):
             for fname in files:
                 full = os.path.join(root, fname)
-                arcname = os.path.relpath(full, os.path.dirname(DATA_DIR))
+                arcname = os.path.relpath(full, os.path.dirname(target))
                 zf.write(full, arcname)
     buf.seek(0)
     return StreamingResponse(
         buf,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=ladder-league-data.zip"},
+        headers={"Content-Disposition": f"attachment; filename={folder_name}.zip"},
     )
 
 
