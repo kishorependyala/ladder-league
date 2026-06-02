@@ -406,6 +406,10 @@ export function recalculateRanking(id: string, phone: string): Promise<{ success
   return post(`/api/leagues/${encodeURIComponent(id)}/recalculate-ranking`, { phone });
 }
 
+export function recalculateStandings(id: string, phone: string): Promise<{ success: boolean; league: League; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(id)}/recalculate-standings`, { phone });
+}
+
 export function startLeague(id: string, phone: string): Promise<{ success: boolean; league: League }> {
   return post(`/api/leagues/${encodeURIComponent(id)}/start`, { phone });
 }

@@ -1023,6 +1023,7 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
         save_match(m)
         if m.get("status") == "accepted":
             _sync_playoff_match_result(lg, m)
+            _refresh_standings_ranking(lg)
         return {"success": True, "match": m}
 
     # ── Doubles: all four players (or admin) must accept ──────────────
@@ -1688,6 +1689,7 @@ def api_delete_match(league_id: str, match_id: str, phone: str = Query(...)):
     deleted = delete_match(lg["sport"], league_id, match_id)
     if not deleted:
         return {"success": False, "message": "Match not found"}
+    _refresh_standings_ranking(lg)
     return {"success": True, "deletedMatch": deleted}
 
 
@@ -1825,6 +1827,31 @@ def api_standings(league_id: str):
     if not lg:
         return {"success": False, "message": "League not found"}
     return {"leagueId": league_id, "standings": _compute_league_standings(lg)}
+
+
+def _refresh_standings_ranking(lg: dict) -> None:
+    """Recompute finalRanking from current match results and persist. Only for active/playoffs leagues."""
+    if lg.get("status") not in ("active", "playoffs"):
+        return
+    sorted_stats = _compute_league_standings(lg)
+    lg["finalRanking"] = [s["player"]["id"] for s in sorted_stats]
+    save_league(lg)
+
+
+@app.post("/api/leagues/{league_id}/recalculate-standings")
+def api_recalculate_standings(league_id: str, data: dict = Body(...)):
+    """Recompute finalRanking from current match results (admin action for active/playoffs leagues)."""
+    phone = data.get("phone")
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    requester = get_user_by_phone(phone)
+    if not requester or (requester["id"] not in lg.get("adminIds", []) and not is_super_admin(phone)):
+        return {"success": False, "message": "Not authorized"}
+    if lg.get("status") not in ("active", "playoffs"):
+        return {"success": False, "message": "League must be active or in playoffs"}
+    _refresh_standings_ranking(lg)
+    return {"success": True, "league": get_league_by_id(league_id)}
 
 
 def _compute_standing_breakdown(lg: dict) -> dict:

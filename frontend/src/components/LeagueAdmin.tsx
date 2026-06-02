@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
+import { addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, recalculateRanking, recalculateStandings, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -82,7 +82,7 @@ function PinConfirmModal({ label, onConfirm, onClose }: {
 }
 
 // ── MatchesTab ────────────────────────────────────────────────────────────────
-function MatchesTab({ league, user }: { league: League; user: User }) {
+function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: User; onLeagueUpdate?: (l: League) => void }) {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -123,7 +123,12 @@ function MatchesTab({ league, user }: { league: League; user: User }) {
       const res = await deleteMatch(league.id, match.id, user.phone);
       if (!res.success) throw new Error(res.message || 'Failed to delete.');
       setMatches(prev => prev.filter(m => m.id !== match.id));
-      setMessage('Match deleted.');
+      setMessage('Match deleted. Rankings recalculated.');
+      if (onLeagueUpdate) {
+        const { getLeague } = await import('../api');
+        const updated = await getLeague(league.id);
+        if (updated) onLeagueUpdate(updated);
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Error deleting match.'); }
     setBusyId(null);
     setPinTarget(null);
@@ -780,6 +785,21 @@ function LeagueCard({
               {busyId === `recalc-${league.id}` ? '⏳ Recalculating…' : '📊 Recalculate rankings'}
             </button>
           )}
+          {['active', 'playoffs'].includes(league.status) && (
+            <button
+              style={S.smallOutlineBtn}
+              disabled={!!busyId}
+              title="Recompute current standings and update seed ranking"
+              onClick={() => act(`recalc-standings-${league.id}`, async () => {
+                const r = await recalculateStandings(league.id, user.phone);
+                if (!r.success) throw new Error(r.message || 'Recalculate failed');
+                setMessage('✅ Standings recalculated.');
+                return r.league;
+              })}
+            >
+              {busyId === `recalc-standings-${league.id}` ? '⏳ Recalculating…' : '📊 Recalculate standings'}
+            </button>
+          )}
           {!isTeamLeague && league.status === 'ranked' && (
             <button style={S.smallBtn} disabled={!!busyId} onClick={handleProgress}>
               Start league
@@ -981,7 +1001,7 @@ function LeagueCard({
 
       {/* Matches tab */}
       {activeTab === 'matches' && (
-        <MatchesTab league={league} user={user} />
+        <MatchesTab league={league} user={user} onLeagueUpdate={onLeagueUpdate} />
       )}
     </div>
   );
