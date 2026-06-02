@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { addAdmin, addPlayer, convertToTeamLeague, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Player, type Sport, type User } from '../api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, recalculateRanking, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -33,6 +33,197 @@ function currentBlockIndex(blocks: LeagueBlock[]): number {
   }
   if (blocks.length && new Date().toISOString().slice(0, 10) >= blocks[blocks.length - 1].endDate) return blocks.length; // all done
   return -1;
+}
+
+const ADMIN_PIN = '1234567';
+
+// ── PinConfirmModal ───────────────────────────────────────────────────────────
+function PinConfirmModal({ label, onConfirm, onClose }: {
+  label: string;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const [pin, setPin] = useState('');
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSubmit = () => {
+    if (pin !== ADMIN_PIN) { setError('Incorrect PIN.'); setPin(''); inputRef.current?.focus(); return; }
+    onConfirm();
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+      onClick={onClose}>
+      <div style={{ background: '#fff', borderRadius: '1rem', padding: '1.4rem', maxWidth: 360, width: '100%', display: 'grid', gap: '0.9rem' }}
+        onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: 0, color: '#78350f', fontWeight: 700 }}>🔒 Admin confirmation</h3>
+        <p style={{ margin: 0, fontSize: '0.9rem', color: '#374151' }}>{label}</p>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: '#6b7280' }}>Enter admin PIN to proceed:</p>
+        <input
+          ref={inputRef}
+          type="password"
+          value={pin}
+          onChange={e => { setPin(e.target.value); setError(''); }}
+          onKeyDown={e => { if (e.key === 'Enter') handleSubmit(); if (e.key === 'Escape') onClose(); }}
+          placeholder="PIN"
+          style={S.inp}
+        />
+        {error && <div style={S.errorBox}>{error}</div>}
+        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+          <button style={S.smallOutlineBtn} onClick={onClose}>Cancel</button>
+          <button style={{ ...S.smallBtn, background: '#dc2626' }} onClick={handleSubmit}>Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MatchesTab ────────────────────────────────────────────────────────────────
+function MatchesTab({ league, user }: { league: League; user: User }) {
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [filterPlayerId, setFilterPlayerId] = useState<string | 'all'>(user.id);
+  const [pinTarget, setPinTarget] = useState<Match | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try { setMatches(await getLeagueMatches(league.id)); }
+    catch { setError('Could not load matches.'); }
+    setLoading(false);
+  }, [league.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const playerMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of league.players) m[p.id] = `${p.firstName} ${p.lastName}`;
+    return m;
+  }, [league.players]);
+
+  const displayedMatches = useMemo(() => {
+    const sorted = [...matches].sort((a, b) =>
+      (b.datePlayed ?? b.submittedAt ?? '').localeCompare(a.datePlayed ?? a.submittedAt ?? '')
+    );
+    if (filterPlayerId === 'all') return sorted;
+    return sorted.filter(m =>
+      m.submitterId === filterPlayerId || m.opponentId === filterPlayerId ||
+      m.team1PlayerIds?.includes(filterPlayerId) || m.team2PlayerIds?.includes(filterPlayerId)
+    );
+  }, [matches, filterPlayerId]);
+
+  const handleDelete = async (match: Match) => {
+    setBusyId(match.id); setError(''); setMessage('');
+    try {
+      const res = await deleteMatch(league.id, match.id, user.phone);
+      if (!res.success) throw new Error(res.message || 'Failed to delete.');
+      setMatches(prev => prev.filter(m => m.id !== match.id));
+      setMessage('Match deleted.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Error deleting match.'); }
+    setBusyId(null);
+    setPinTarget(null);
+  };
+
+  const matchLabel = (m: Match): string => {
+    if (m.matchType === 'doubles') {
+      const t1 = (m.team1PlayerIds ?? []).map(id => playerMap[id] ?? id).join(' & ') || '?';
+      const t2 = (m.team2PlayerIds ?? []).map(id => playerMap[id] ?? id).join(' & ') || '?';
+      return `${t1}  vs  ${t2}`;
+    }
+    const s = playerMap[m.submitterId ?? ''] ?? m.submitterId ?? '?';
+    const o = playerMap[m.opponentId ?? ''] ?? m.opponentId ?? '?';
+    return `${s}  vs  ${o}`;
+  };
+
+  const scoreLabel = (m: Match): string => {
+    const sc = m.score;
+    if (!sc) return '';
+    if (sc.sets?.length) return sc.sets.map(s => `${s.me}-${s.opp}`).join(', ');
+    if (sc.submitter !== undefined && sc.opponent !== undefined) return `${sc.submitter}-${sc.opponent}`;
+    return '';
+  };
+
+  const statusColor = (s?: string) =>
+    s === 'accepted' ? '#16a34a' : s === 'rejected' ? '#dc2626' : '#d97706';
+
+  return (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      {pinTarget && (
+        <PinConfirmModal
+          label={`Delete match: ${matchLabel(pinTarget)}?`}
+          onConfirm={() => handleDelete(pinTarget)}
+          onClose={() => setPinTarget(null)}
+        />
+      )}
+
+      {/* Player filter */}
+      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ ...mutedText, fontSize: '0.8rem', marginRight: '0.2rem' }}>Show:</span>
+        <button
+          onClick={() => setFilterPlayerId(user.id)}
+          style={{ padding: '0.2rem 0.65rem', borderRadius: '99px', border: '1.5px solid', fontSize: '0.78rem', cursor: 'pointer', fontWeight: filterPlayerId === user.id ? 700 : 500, borderColor: filterPlayerId === user.id ? '#f59e0b' : '#e5e7eb', background: filterPlayerId === user.id ? '#fef3c7' : '#f9fafb', color: filterPlayerId === user.id ? '#92400e' : '#6b7280' }}
+        >
+          My matches
+        </button>
+        <button
+          onClick={() => setFilterPlayerId('all')}
+          style={{ padding: '0.2rem 0.65rem', borderRadius: '99px', border: '1.5px solid', fontSize: '0.78rem', cursor: 'pointer', fontWeight: filterPlayerId === 'all' ? 700 : 500, borderColor: filterPlayerId === 'all' ? '#f59e0b' : '#e5e7eb', background: filterPlayerId === 'all' ? '#fef3c7' : '#f9fafb', color: filterPlayerId === 'all' ? '#92400e' : '#6b7280' }}
+        >
+          All
+        </button>
+        {league.players.filter(p => p.id !== user.id).map(p => (
+          <button
+            key={p.id}
+            onClick={() => setFilterPlayerId(p.id)}
+            style={{ padding: '0.2rem 0.65rem', borderRadius: '99px', border: '1.5px solid', fontSize: '0.78rem', cursor: 'pointer', fontWeight: filterPlayerId === p.id ? 700 : 500, borderColor: filterPlayerId === p.id ? '#f59e0b' : '#e5e7eb', background: filterPlayerId === p.id ? '#fef3c7' : '#f9fafb', color: filterPlayerId === p.id ? '#92400e' : '#6b7280' }}
+          >
+            {p.firstName} {p.lastName}
+          </button>
+        ))}
+      </div>
+
+      {error && <div style={S.errorBox}>{error}</div>}
+      {message && <div style={S.successBox}>{message}</div>}
+
+      {loading ? (
+        <p style={mutedText}>Loading…</p>
+      ) : displayedMatches.length === 0 ? (
+        <p style={mutedText}>No matches found.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: '0.4rem' }}>
+          {displayedMatches.map(m => (
+            <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', padding: '0.5rem 0.75rem', background: '#fffbeb', borderRadius: '0.6rem', border: '1px solid #fde68a' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#78350f' }}>{matchLabel(m)}</div>
+                <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.1rem', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                  {m.datePlayed && <span>{fmtDate(m.datePlayed)}</span>}
+                  {scoreLabel(m) && <span>📊 {scoreLabel(m)}</span>}
+                  {m.isPlayoff && <span style={{ color: '#7c3aed' }}>🏆 Playoff</span>}
+                  {m.matchType === 'doubles' && <span>👥 Doubles</span>}
+                </div>
+              </div>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: statusColor(m.status), background: '#f9fafb', borderRadius: '0.35rem', padding: '0.1rem 0.45rem', border: '1px solid #e5e7eb' }}>
+                {m.status ?? 'pending'}
+              </span>
+              <button
+                style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.75rem', padding: '0.2rem 0.55rem' }}
+                disabled={busyId === m.id}
+                onClick={() => setPinTarget(m)}
+                title="Delete match"
+              >
+                {busyId === m.id ? '…' : '🗑️'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── ScheduleEditor ────────────────────────────────────────────────────────────
@@ -316,9 +507,10 @@ function LeagueCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule'>('players');
+  const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule' | 'matches'>('players');
   const [copied, setCopied] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
+  const [pinPlayer, setPinPlayer] = useState<Player | null>(null);
 
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(league.name);
@@ -352,7 +544,10 @@ function LeagueCard({
   };
 
   const handleRemovePlayer = (p: Player) => {
-    if (!window.confirm(`Remove ${p.firstName} ${p.lastName} from this league?`)) return;
+    setPinPlayer(p);
+  };
+
+  const doRemovePlayer = (p: Player) => {
     act(`remove-${p.id}`, async () => {
       const res = await removePlayer(league.id, user.phone, p.id);
       if (!res.success) throw new Error((res as any).message);
@@ -643,12 +838,20 @@ function LeagueCard({
         />
       )}
 
+      {pinPlayer && (
+        <PinConfirmModal
+          label={`Remove ${pinPlayer.firstName} ${pinPlayer.lastName} from "${league.name}"?`}
+          onConfirm={() => { doRemovePlayer(pinPlayer); setPinPlayer(null); }}
+          onClose={() => setPinPlayer(null)}
+        />
+      )}
+
       {/* tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>
-        {(['players', 'rules', 'schedule'] as const).map(t => (
+        {(['players', 'rules', 'schedule', 'matches'] as const).map(t => (
           <button
             key={t}
-            onClick={() => setActiveTab(t as 'players' | 'rules' | 'schedule')}
+            onClick={() => setActiveTab(t)}
             style={{
               padding: '0.5rem 1rem',
               background: 'none',
@@ -661,7 +864,7 @@ function LeagueCard({
               cursor: 'pointer',
             }}
           >
-            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : '📅 Rounds'}
+            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : t === 'schedule' ? '📅 Rounds' : '🎾 Matches'}
           </button>
         ))}
       </div>
@@ -774,6 +977,11 @@ function LeagueCard({
       {/* Schedule tab */}
       {activeTab === 'schedule' && (
         <ScheduleEditor league={league} user={user} onLeagueUpdate={onLeagueUpdate} />
+      )}
+
+      {/* Matches tab */}
+      {activeTab === 'matches' && (
+        <MatchesTab league={league} user={user} />
       )}
     </div>
   );

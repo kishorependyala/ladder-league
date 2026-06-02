@@ -263,6 +263,16 @@ def list_matches(sport: str, league_id: str) -> list:
     return _load_matches_raw(sport, league_id)
 
 
+def delete_match(sport: str, league_id: str, match_id: str) -> Optional[dict]:
+    """Remove a match by ID. Returns the deleted match, or None if not found."""
+    matches = _load_matches_raw(sport, league_id)
+    target = next((m for m in matches if m["id"] == match_id), None)
+    if target is None:
+        return None
+    _save_matches_raw(sport, league_id, [m for m in matches if m["id"] != match_id])
+    return target
+
+
 def get_pending_matches_for_user(user_id: str) -> list:
     """Return all pending matches relevant to this user (opponent, submitter, or doubles participant)."""
     pending = []

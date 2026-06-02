@@ -201,7 +201,7 @@ from app.leagues import (
     SPORTS, SPORT_LABELS, SPORT_SCORING,
     next_league_id, next_match_id,
     save_league, get_league, get_league_by_id, list_leagues, delete_league,
-    save_match, get_match, list_matches, get_pending_matches_for_user,
+    save_match, get_match, list_matches, delete_match, get_pending_matches_for_user,
     is_super_admin, add_super_admin, load_superadmin_phones,
     compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
     default_rules, compute_match_winner, generate_playoffs,
@@ -1654,6 +1654,41 @@ def api_league_matches(league_id: str):
     if not lg:
         return []
     return list_matches(lg["sport"], league_id)
+
+
+@app.delete("/api/leagues/{league_id}/matches/{match_id}")
+def api_delete_match(league_id: str, match_id: str, phone: str = Query(...)):
+    caller = get_user_by_phone(phone)
+    if not caller:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if caller["id"] not in lg.get("adminIds", []) and not is_super_admin(phone):
+        return {"success": False, "message": "Admin access required"}
+
+    match = get_match(lg["sport"], league_id, match_id)
+    if not match:
+        return {"success": False, "message": "Match not found"}
+
+    # For playoff matches: clear the winnerId/matchId from the bracket slot
+    if match.get("isPlayoff"):
+        group_code = _normalize_playoff_group(match.get("playoffGroup"))
+        matchup_id = match.get("playoffMatchupId")
+        for group in lg.get("playoffs", {}).get("groups", []):
+            if _normalize_playoff_group(group.get("name")) != group_code:
+                continue
+            matchup = group.get("matchups", {}).get(matchup_id)
+            if matchup and matchup.get("matchId") == match_id:
+                matchup.pop("winnerId", None)
+                matchup.pop("matchId", None)
+                save_league(lg)
+            break
+
+    deleted = delete_match(lg["sport"], league_id, match_id)
+    if not deleted:
+        return {"success": False, "message": "Match not found"}
+    return {"success": True, "deletedMatch": deleted}
 
 
 @app.get("/api/leagues/{league_id}/playoffs")

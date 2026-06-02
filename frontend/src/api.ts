@@ -469,6 +469,10 @@ export function getLeagueMatches(id: string): Promise<Match[]> {
   return get(`/api/leagues/${encodeURIComponent(id)}/matches`);
 }
 
+export function deleteMatch(leagueId: string, matchId: string, phone: string): Promise<{ success: boolean; message?: string }> {
+  return request(`/api/leagues/${encodeURIComponent(leagueId)}/matches/${encodeURIComponent(matchId)}?phone=${encodeURIComponent(phone)}`, { method: 'DELETE' });
+}
+
 export function getLeagueStandings(id: string): Promise<StandingsResponse> {
   return get(`/api/leagues/${encodeURIComponent(id)}/standings`);
 }
