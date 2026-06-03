@@ -406,7 +406,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Trends']] as [StandingsTab, string][] : []),
             // ['results', '🎯 Match Results'], // hidden — code preserved below
             ...(!isTeamLeague ? [['rounds', '📅 Rounds'] as [StandingsTab, string]] : []),
-            ...(!isTeamLeague ? [['schedule', '📋 Schedule & Pending'] as [StandingsTab, string]] : []),
+            ...(!isTeamLeague ? [['schedule', '📋 Pending'] as [StandingsTab, string]] : []),
             ['matches', '🎾 Matches'],
             ['availability', '📆 Find a Match'],
             ['rules', '📖 League Rules'],
