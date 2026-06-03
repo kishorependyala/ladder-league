@@ -2,14 +2,31 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getLeagueAvailability, saveMyAvailability, type League, type Match, type PlayerAvailability, type User } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const HOURS = [6, 8, 10, 12, 14, 16, 18, 20]; // 2-hour slots
+const HOURS = [6, 8, 10, 12, 14, 16, 18, 20];
 const HOUR_LABELS: Record<number, string> = {
   6: '6–8am', 8: '8–10am', 10: '10am–12', 12: '12–2pm',
   14: '2–4pm', 16: '4–6pm', 18: '6–8pm', 20: '8–10pm',
 };
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function slotId(day: string, hour: number) { return `${day}-${String(hour).padStart(2, '0')}`; }
+/** Generate the next 7 days (today + 6) as { iso: 'YYYY-MM-DD', label: 'Mon\n2 Jun' } */
+function getNext7Days() {
+  const days: { iso: string; dayName: string; dateLabel: string }[] = [];
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const iso = d.toISOString().slice(0, 10);
+    const dayName = DAY_NAMES[d.getDay()];
+    const dateLabel = `${d.getDate()} ${d.toLocaleString('default', { month: 'short' })}`;
+    days.push({ iso, dayName, dateLabel });
+  }
+  return days;
+}
+
+function slotId(dateIso: string, hour: number) {
+  return `${dateIso}-${String(hour).padStart(2, '0')}`;
+}
 
 interface Props {
   league: League;
@@ -25,6 +42,8 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
+
+  const days = useMemo(() => getNext7Days(), []);
 
   const players = league.players ?? [];
   const playerMap = useMemo(() => {
@@ -67,7 +86,6 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
     setSaving(false);
   };
 
-  // Build slot → list of other player IDs who have it
   const slotOthers = useMemo(() => {
     const map: Record<string, string[]> = {};
     for (const avail of availability) {
@@ -80,7 +98,6 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
     return map;
   }, [availability, user.id]);
 
-  // Suggested matchups: other players sorted by overlap count desc, then fewest head-to-head matches
   const suggestions = useMemo(() => {
     const acceptedMatches = matches.filter(m => m.status === 'accepted');
     return players
@@ -127,6 +144,18 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
     };
   };
 
+  /** Format a slot ID like "2026-06-02-06" → "Mon 2 Jun 6–8am" */
+  const formatSlotLabel = (slot: string) => {
+    const parts = slot.split('-');
+    if (parts.length === 4) {
+      const iso = `${parts[0]}-${parts[1]}-${parts[2]}`;
+      const hour = parseInt(parts[3]);
+      const d = new Date(iso + 'T12:00:00');
+      return `${DAY_NAMES[d.getDay()]} ${d.getDate()} ${d.toLocaleString('default', { month: 'short' })} ${HOUR_LABELS[hour] ?? hour}`;
+    }
+    return slot;
+  };
+
   if (loading) return <p style={mutedText}>Loading availability…</p>;
 
   return (
@@ -136,11 +165,7 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
           <h3 style={{ ...subheading, margin: 0 }}>📆 Find a Match</h3>
           <p style={{ ...mutedText, fontSize: '0.82rem', marginTop: '0.2rem' }}>Tap slots to mark when you're free. Green = others available.</p>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          style={{ ...S.smallBtn, minWidth: 90 }}
-        >
+        <button onClick={handleSave} disabled={saving} style={{ ...S.smallBtn, minWidth: 90 }}>
           {saving ? '⏳ Saving…' : '💾 Save'}
         </button>
       </div>
@@ -154,23 +179,26 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
         <span><span style={{ background: '#dcfce7', color: '#166534', borderRadius: '0.3rem', padding: '0.1rem 0.4rem', fontWeight: 600 }}>3</span> = other players available</span>
       </div>
 
-      {/* Grid */}
+      {/* Grid — next 7 days */}
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: `80px repeat(${DAYS.length}, 1fr)`, gap: '0.25rem', minWidth: 480 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `74px repeat(7, 1fr)`, gap: '0.25rem', minWidth: 500 }}>
           {/* Header row */}
           <div />
-          {DAYS.map(d => (
-            <div key={d} style={{ textAlign: 'center', fontWeight: 700, fontSize: '0.8rem', color: '#78350f', padding: '0.2rem 0' }}>{d}</div>
+          {days.map(d => (
+            <div key={d.iso} style={{ textAlign: 'center', padding: '0.2rem 0.1rem' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#78350f' }}>{d.dayName}</div>
+              <div style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 500 }}>{d.dateLabel}</div>
+            </div>
           ))}
 
           {/* Slot rows */}
           {HOURS.map(hour => (
             <>
-              <div key={`label-${hour}`} style={{ display: 'flex', alignItems: 'center', fontSize: '0.75rem', color: '#6b7280', fontWeight: 600, paddingRight: '0.4rem' }}>
+              <div key={`label-${hour}`} style={{ display: 'flex', alignItems: 'center', fontSize: '0.72rem', color: '#6b7280', fontWeight: 600, paddingRight: '0.3rem' }}>
                 {HOUR_LABELS[hour]}
               </div>
-              {DAYS.map(day => {
-                const slot = slotId(day, hour);
+              {days.map(day => {
+                const slot = slotId(day.iso, hour);
                 const othersHere = slotOthers[slot] ?? [];
                 const isMine = mySlots.has(slot);
                 return (
@@ -199,7 +227,7 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
       {/* Who's available at hovered slot */}
       {hoveredSlot && slotOthers[hoveredSlot]?.length > 0 && (
         <div style={{ padding: '0.6rem 1rem', borderRadius: '0.7rem', background: '#fef3c7', border: '1px solid #fde68a', fontSize: '0.85rem', color: '#78350f' }}>
-          <strong>Available {hoveredSlot.replace('-', ' ')}:</strong>{' '}
+          <strong>Available {formatSlotLabel(hoveredSlot)}:</strong>{' '}
           {slotOthers[hoveredSlot].map(id => playerMap[id] ?? id).join(', ')}
         </div>
       )}
@@ -218,10 +246,7 @@ export default function AvailabilityTab({ league, user, matches }: Props) {
                     <strong style={{ color: '#78350f' }}>{player.firstName} {player.lastName}</strong>
                     {h2h === 0 && <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', background: '#fde68a', color: '#92400e', borderRadius: '999px', padding: '0.1rem 0.5rem', fontWeight: 700 }}>Haven't played yet!</span>}
                     <div style={{ ...mutedText, fontSize: '0.78rem', marginTop: '0.2rem' }}>
-                      {overlapSlots.slice(0, 4).map(s => {
-                        const [d, h] = s.split('-');
-                        return `${d} ${HOUR_LABELS[parseInt(h)]}`;
-                      }).join(' · ')}
+                      {overlapSlots.slice(0, 4).map(s => formatSlotLabel(s)).join(' · ')}
                       {overlapSlots.length > 4 && ` +${overlapSlots.length - 4} more`}
                     </div>
                   </div>
