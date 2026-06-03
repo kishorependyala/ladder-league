@@ -195,8 +195,19 @@ export default function StandingBreakdown({ league }: Props) {
   // Show completed rounds most-recent first
   const displayRounds = useMemo(() => [...completedRounds].reverse(), [completedRounds]);
 
-  if (loading) return <p style={mutedText}>Loading standings breakdown…</p>;
-  if (error) return <div style={S.errorBox}>{error}</div>;
+  if (loading) return <p style={mutedText}>Loading trends…</p>;
+  if (error) return (
+    <div style={{ display: 'grid', gap: '0.75rem' }}>
+      <div style={S.errorBox}>{error}</div>
+      <button style={S.smallOutlineBtn} onClick={() => {
+        setLoading(true); setError('');
+        getStandingBreakdown(league.id)
+          .then(res => { setRounds(res.rounds || []); setBreakdown(res.breakdown || []); })
+          .catch(err => setError(err.message || 'Failed to load trends'))
+          .finally(() => setLoading(false));
+      }}>🔄 Retry</button>
+    </div>
+  );
   if (filteredBreakdown.length === 0) {
     return <p style={mutedText}>No round data yet — submit matches to see breakdown.</p>;
   }
@@ -217,7 +228,7 @@ export default function StandingBreakdown({ league }: Props) {
 
       {/* ── Breakdown table ───────────────────────────────────── */}
       <div>
-        <h3 style={{ ...subheading, marginBottom: '0.75rem' }}>🏅 Standing Breakdown</h3>
+        <h3 style={{ ...subheading, marginBottom: '0.75rem' }}>🏅 Trends</h3>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400 }}>
             <thead>

@@ -1981,8 +1981,10 @@ def api_save_availability(league_id: str, data: dict = Body(...)):
                         stats[pid]["points"] += loss_pts
                 continue
 
-            sid = m["submitterId"]
-            oid = m["opponentId"]
+            sid = m.get("submitterId")
+            oid = m.get("opponentId")
+            if not sid or not oid:
+                continue
             winner = _match_winner_player_id(m)
             if not winner:
                 score = m.get("score", {})
@@ -2067,8 +2069,14 @@ def api_save_availability(league_id: str, data: dict = Body(...)):
 def api_standing_breakdown(league_id: str):
     lg = get_league_by_id(league_id)
     if not lg:
-        return {"success": False, "message": "League not found"}
-    return {"leagueId": league_id, **_compute_standing_breakdown(lg)}
+        return {"success": False, "message": "League not found", "rounds": [], "breakdown": []}
+    try:
+        result = _compute_standing_breakdown(lg)
+        return {"leagueId": league_id, **result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"leagueId": league_id, "rounds": [], "breakdown": [], "error": str(e)}
 
 
 # ═══════════════════════════════════════════════════════════════════
