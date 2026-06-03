@@ -1885,6 +1885,9 @@ def api_save_availability(league_id: str, data: dict = Body(...)):
     updated_at = datetime.now().isoformat()
     entry = save_player_availability(lg["sport"], league_id, user["id"], slots, updated_at)
     return {"success": True, "entry": entry}
+
+
+def _compute_standing_breakdown(lg: dict) -> dict:
     """
     Compute per-player rank history across rounds.
 
