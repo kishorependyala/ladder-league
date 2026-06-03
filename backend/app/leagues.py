@@ -112,6 +112,34 @@ def _matches_path(sport: str, league_id: str) -> str:
     return os.path.join(_league_dir(sport, league_id), "matches.json")
 
 
+def _availability_path(sport: str, league_id: str) -> str:
+    """Player availability slots stored as {leagueId}/availability.json."""
+    return os.path.join(_league_dir(sport, league_id), "availability.json")
+
+
+def get_league_availability(sport: str, league_id: str) -> list:
+    """Return all players' availability entries for a league."""
+    path = _availability_path(sport, league_id)
+    if not os.path.exists(path):
+        return []
+    with open(path, "r") as f:
+        data = json.load(f)
+    return data if isinstance(data, list) else []
+
+
+def save_player_availability(sport: str, league_id: str, player_id: str, slots: list, updated_at: str) -> dict:
+    """Upsert a player's availability slots. Returns the saved entry."""
+    all_avail = get_league_availability(sport, league_id)
+    entry = {"playerId": player_id, "slots": slots, "updatedAt": updated_at}
+    all_avail = [a for a in all_avail if a.get("playerId") != player_id]
+    all_avail.append(entry)
+    path = _availability_path(sport, league_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(all_avail, f, indent=2)
+    return entry
+
+
 def _config_dir() -> str:
     return os.path.join(_data_dir(), "config")
 

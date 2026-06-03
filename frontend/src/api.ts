@@ -477,6 +477,20 @@ export function deleteMatch(leagueId: string, matchId: string, phone: string): P
   return request(`/api/leagues/${encodeURIComponent(leagueId)}/matches/${encodeURIComponent(matchId)}?phone=${encodeURIComponent(phone)}`, { method: 'DELETE' });
 }
 
+export interface PlayerAvailability {
+  playerId: string;
+  slots: string[];  // e.g. ["Mon-06", "Tue-14"]
+  updatedAt: string;
+}
+
+export function getLeagueAvailability(leagueId: string): Promise<{ success: boolean; availability: PlayerAvailability[] }> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/availability`);
+}
+
+export function saveMyAvailability(leagueId: string, phone: string, slots: string[]): Promise<{ success: boolean; entry?: PlayerAvailability; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/availability`, { phone, slots });
+}
+
 export function getLeagueStandings(id: string): Promise<StandingsResponse> {
   return get(`/api/leagues/${encodeURIComponent(id)}/standings`);
 }

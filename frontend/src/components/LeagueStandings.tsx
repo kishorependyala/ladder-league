@@ -13,6 +13,7 @@ import SubmitDoublesMatch from './SubmitDoublesMatch';
 import SubmitMatch from './SubmitMatch';
 import LeagueRulesSummary from './LeagueRulesSummary';
 import TeamAddScoreModal from './TeamAddScoreModal';
+import AvailabilityTab from './AvailabilityTab';
 
 
 type LeagueStandingsProps = {
@@ -20,7 +21,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'matches' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures' | 'team-individual';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'matches' | 'availability' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures' | 'team-individual';
 
 type MatchResultCard = {
   match: Match;
@@ -157,8 +158,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
   const isTeamLeague = currentLeague.leagueType === 'team';
   const teamPhase = currentLeague.phase ?? '';
   const isDoubles = Boolean(currentLeague.rules?.doublesMode && currentLeague.rules.doublesMode !== 'none' && !isTeamLeague);
+  const isAdhoc = currentLeague.rules?.matchFormat === 'adhoc';
   const [activeTab, setActiveTab] = useState<StandingsTab>('standings');
   const [matchFilter, setMatchFilter] = useState<string | 'all'>(user.id);
+  const [scheduleFilter, setScheduleFilter] = useState<string | 'all'>(user.id);
+  const [showRejected, setShowRejected] = useState(false);
 
   useEffect(() => {
     setCurrentLeague(league);
@@ -404,6 +408,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ...(!isTeamLeague ? [['rounds', '📅 Rounds'] as [StandingsTab, string]] : []),
             ...(!isTeamLeague ? [['schedule', '📋 Schedule & Pending'] as [StandingsTab, string]] : []),
             ['matches', '🎾 Matches'],
+            ['availability', '📆 Find a Match'],
             ['rules', '📖 League Rules'],
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
@@ -634,66 +639,93 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           <RoundsTab league={currentLeague} user={user} matches={matches} />
         )}
 
-        {activeTab === 'schedule' && (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            {!isDoubles && (
-              <>
-                <div style={{ display: 'grid', gap: '0.25rem' }}>
-                  <h3 style={subheading}>Match Schedule</h3>
-                  <p style={{ ...mutedText, fontSize: '0.9rem' }}>Enter scores for any pairing that does not already have an accepted result.</p>
-                </div>
-                <MatchGrid
-                  league={currentLeague}
-                  user={user}
-                  matches={matches.filter(match => !match.isPlayoff)}
-                  isAdmin={isAdmin}
-                  onEnterScore={(p1, p2) => setActiveEnterPair({ p1, p2 })}
-                />
-              </>
-            )}
+        {activeTab === 'schedule' && (() => {
+          const players = currentLeague.players ?? [];
+          const filteredPending = pendingMatches.filter(m =>
+            scheduleFilter === 'all' ? true :
+              m.submitterId === scheduleFilter || m.opponentId === scheduleFilter ||
+              (m.team1PlayerIds ?? []).includes(scheduleFilter) || (m.team2PlayerIds ?? []).includes(scheduleFilter)
+          );
+          const pillStyle = (active: boolean) => ({
+            padding: '0.3rem 0.8rem', borderRadius: '999px', border: '1.5px solid', fontSize: '0.82rem',
+            cursor: 'pointer' as const, fontWeight: active ? 700 : 400,
+            background: active ? '#f59e0b' : '#fff', color: active ? '#fff' : '#6b7280',
+            borderColor: active ? '#f59e0b' : '#d1d5db',
+          });
+          return (
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              {/* Player filter pills */}
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                <button onClick={() => setScheduleFilter(user.id)} style={pillStyle(scheduleFilter === user.id)}>My matches</button>
+                <button onClick={() => setScheduleFilter('all')} style={pillStyle(scheduleFilter === 'all')}>All</button>
+                {players.filter(p => p.id !== user.id).map(p => (
+                  <button key={p.id} onClick={() => setScheduleFilter(p.id)} style={pillStyle(scheduleFilter === p.id)}>
+                    {p.firstName} {p.lastName}
+                  </button>
+                ))}
+              </div>
 
-            <PendingMatches
-              matches={pendingMatches}
-              user={user}
-              leagueId={currentLeague.id}
-              leagueLookup={{ [currentLeague.id]: currentLeague }}
-              isAdmin={isAdmin}
-              onActionComplete={async () => { await loadData(); if (isDoubles) refreshDoublesStandings(); }}
-            />
+              {!isAdhoc && !isDoubles && (
+                <>
+                  <div style={{ display: 'grid', gap: '0.25rem' }}>
+                    <h3 style={subheading}>Match Schedule</h3>
+                    <p style={{ ...mutedText, fontSize: '0.9rem' }}>Enter scores for any pairing that does not already have an accepted result.</p>
+                  </div>
+                  <MatchGrid
+                    league={currentLeague}
+                    user={user}
+                    matches={matches.filter(match => !match.isPlayoff)}
+                    isAdmin={isAdmin}
+                    onEnterScore={(p1, p2) => setActiveEnterPair({ p1, p2 })}
+                  />
+                </>
+              )}
 
-            <div style={{ display: 'grid', gap: '0.8rem' }}>
-              <h3 style={subheading}>Recent match submissions</h3>
-              {matches.length === 0 ? (
-                <p style={mutedText}>No matches submitted yet.</p>
-              ) : (
+              <PendingMatches
+                matches={filteredPending}
+                user={user}
+                leagueId={currentLeague.id}
+                leagueLookup={{ [currentLeague.id]: currentLeague }}
+                isAdmin={isAdmin}
+                onActionComplete={async () => { await loadData(); if (isDoubles) refreshDoublesStandings(); }}
+              />
+
+              {!isAdhoc && (
                 <div style={{ display: 'grid', gap: '0.8rem' }}>
-                  {matches.map(match => (
-                    <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem', background: '#fffbeb' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <strong style={{ color: '#78350f' }}>
-                          {match.matchType === 'doubles'
-                            ? `${(match.team1PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')} vs ${(match.team2PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')}`
-                            : `${findLeaguePlayer(currentLeague, match.submitterId, match.submitter)} vs ${findLeaguePlayer(currentLeague, match.opponentId, match.opponent)}`
-                          }
-                        </strong>
-                        {match.matchType === 'doubles' && (
-                          <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '0.15rem 0.5rem', fontWeight: 700 }}>🏸 Doubles</span>
-                        )}
-                        {match.isPlayoff && <span style={{ fontSize: '0.78rem', color: '#6d28d9' }}>• playoff</span>}
-                      </div>
-                      <p style={{ ...mutedText, marginTop: '0.35rem' }}>
-                        {formatScore(match)}
-                        {match.status ? ` • ${match.status}` : ''}
-                        {match.submittedAt ? ` • ${new Date(match.submittedAt).toLocaleString()}` : match.createdAt ? ` • ${new Date(match.createdAt).toLocaleString()}` : ''}
-                      </p>
-                      {match.score?.details && <p style={{ ...mutedText, marginTop: '0.25rem' }}>{match.score.details}</p>}
+                  <h3 style={subheading}>Recent match submissions</h3>
+                  {matches.length === 0 ? (
+                    <p style={mutedText}>No matches submitted yet.</p>
+                  ) : (
+                    <div style={{ display: 'grid', gap: '0.8rem' }}>
+                      {matches.map(match => (
+                        <div key={match.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem', background: '#fffbeb' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <strong style={{ color: '#78350f' }}>
+                              {match.matchType === 'doubles'
+                                ? `${(match.team1PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')} vs ${(match.team2PlayerIds ?? []).map(id => findLeaguePlayer(currentLeague, id)).join(' / ')}`
+                                : `${findLeaguePlayer(currentLeague, match.submitterId, match.submitter)} vs ${findLeaguePlayer(currentLeague, match.opponentId, match.opponent)}`
+                              }
+                            </strong>
+                            {match.matchType === 'doubles' && (
+                              <span style={{ fontSize: '0.72rem', background: '#e0f2fe', color: '#0369a1', borderRadius: '999px', padding: '0.15rem 0.5rem', fontWeight: 700 }}>🏸 Doubles</span>
+                            )}
+                            {match.isPlayoff && <span style={{ fontSize: '0.78rem', color: '#6d28d9' }}>• playoff</span>}
+                          </div>
+                          <p style={{ ...mutedText, marginTop: '0.35rem' }}>
+                            {formatScore(match)}
+                            {match.status ? ` • ${match.status}` : ''}
+                            {match.submittedAt ? ` • ${new Date(match.submittedAt).toLocaleString()}` : match.createdAt ? ` • ${new Date(match.createdAt).toLocaleString()}` : ''}
+                          </p>
+                          {match.score?.details && <p style={{ ...mutedText, marginTop: '0.25rem' }}>{match.score.details}</p>}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
               )}
             </div>
-          </div>
-        )}
+          );
+        })()}
         {activeTab === 'matches' && (() => {
           const players = currentLeague.players ?? [];
           const playerMap: Record<string, string> = {};
@@ -701,6 +733,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
 
           const displayedMatches = [...matches]
             .sort((a, b) => (b.datePlayed ?? b.submittedAt ?? '').localeCompare(a.datePlayed ?? a.submittedAt ?? ''))
+            .filter(m => showRejected ? true : m.status !== 'rejected')
             .filter(m => matchFilter === 'all' ? true :
               m.submitterId === matchFilter || m.opponentId === matchFilter ||
               m.team1PlayerIds?.includes(matchFilter) || m.team2PlayerIds?.includes(matchFilter)
@@ -719,7 +752,15 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
 
           return (
             <div style={{ display: 'grid', gap: '1rem' }}>
-              <h3 style={subheading}>Matches</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <h3 style={{ ...subheading, margin: 0 }}>Matches</h3>
+                <button
+                  onClick={() => setShowRejected(v => !v)}
+                  style={{ padding: '0.3rem 0.75rem', borderRadius: '999px', border: '1.5px solid #d1d5db', fontSize: '0.8rem', cursor: 'pointer', background: showRejected ? '#fee2e2' : '#fff', color: showRejected ? '#dc2626' : '#6b7280', fontWeight: showRejected ? 700 : 400 }}
+                >
+                  {showRejected ? '🙈 Hide Rejected' : '👁 Show Rejected'}
+                </button>
+              </div>
 
               {/* Player filter pills */}
               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -766,6 +807,10 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             </div>
           );
         })()}
+
+        {activeTab === 'availability' && (
+          <AvailabilityTab league={currentLeague} user={user} matches={matches} />
+        )}
 
         {activeTab === 'rules' && (
           <LeagueRulesSummary league={currentLeague} />

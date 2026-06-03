@@ -202,6 +202,7 @@ from app.leagues import (
     next_league_id, next_match_id,
     save_league, get_league, get_league_by_id, list_leagues, delete_league,
     save_match, get_match, list_matches, delete_match, get_pending_matches_for_user,
+    get_league_availability, save_player_availability,
     is_super_admin, add_super_admin, load_superadmin_phones,
     compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
     default_rules, compute_match_winner, generate_playoffs,
@@ -1854,7 +1855,36 @@ def api_recalculate_standings(league_id: str, data: dict = Body(...)):
     return {"success": True, "league": get_league_by_id(league_id)}
 
 
-def _compute_standing_breakdown(lg: dict) -> dict:
+# ═══════════════════════════════════════════════════════════════════
+#  AVAILABILITY
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/leagues/{league_id}/availability")
+def api_get_availability(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    return {"success": True, "availability": get_league_availability(lg["sport"], league_id)}
+
+
+@app.post("/api/leagues/{league_id}/availability")
+def api_save_availability(league_id: str, data: dict = Body(...)):
+    phone = data.get("phone")
+    slots = data.get("slots", [])
+    user = get_user_by_phone(phone)
+    if not user:
+        return {"success": False, "message": "User not found"}
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    player_ids = [p["id"] for p in lg.get("players", [])]
+    if user["id"] not in player_ids:
+        return {"success": False, "message": "Not a member of this league"}
+    if not isinstance(slots, list):
+        return {"success": False, "message": "slots must be a list"}
+    updated_at = datetime.now().isoformat()
+    entry = save_player_availability(lg["sport"], league_id, user["id"], slots, updated_at)
+    return {"success": True, "entry": entry}
     """
     Compute per-player rank history across rounds.
 
