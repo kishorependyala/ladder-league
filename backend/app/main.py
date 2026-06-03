@@ -2918,35 +2918,95 @@ def api_team_standings(league_id: str):
     fixtures = lg.get("fixtures", [])
     all_matches = list_matches(lg["sport"], league_id)
     match_map = {m["id"]: m for m in all_matches}
-    team_stats: dict = {}
+
+    # Build team → player lookup for resolving match winners
+    team_by_player: dict = {}
     for t in teams:
-        team_stats[t["id"]] = {"team": t, "wins": 0, "losses": 0, "draws": 0, "matchPtsFor": 0, "matchPtsAgainst": 0, "points": 0, "rank": 0}
+        for pid in t.get("playerIds", []):
+            team_by_player[pid] = t["id"]
+
+    team_stats: dict = {
+        t["id"]: {"team": t, "wins": 0, "losses": 0, "draws": 0,
+                  "matchPtsFor": 0, "matchPtsAgainst": 0, "points": 0, "rank": 0}
+        for t in teams
+    }
+
     for f in fixtures:
-        if f.get("status") != "completed":
+        t1_id = f.get("team1Id")
+        t2_id = f.get("team2Id")
+        if not t1_id or not t2_id:
             continue
-        t1, t2 = f["team1Id"], f["team2Id"]
-        p1, p2 = f.get("team1Points", 0), f.get("team2Points", 0)
-        if t1 in team_stats:
-            team_stats[t1]["matchPtsFor"] += p1
-            team_stats[t1]["matchPtsAgainst"] += p2
-        if t2 in team_stats:
-            team_stats[t2]["matchPtsFor"] += p2
-            team_stats[t2]["matchPtsAgainst"] += p1
-        w = f.get("winnerId")
-        if w == t1:
-            if t1 in team_stats: team_stats[t1]["wins"] += 1; team_stats[t1]["points"] += 3
-            if t2 in team_stats: team_stats[t2]["losses"] += 1
-        elif w == t2:
-            if t2 in team_stats: team_stats[t2]["wins"] += 1; team_stats[t2]["points"] += 3
-            if t1 in team_stats: team_stats[t1]["losses"] += 1
+
+        # Build player→team map scoped to this fixture's two teams
+        t1_player_ids = set(next((t["playerIds"] for t in teams if t["id"] == t1_id), []))
+        p2t: dict = {}
+        for t in teams:
+            if t["id"] in (t1_id, t2_id):
+                for pid in t.get("playerIds", []):
+                    p2t[pid] = t["id"]
+
+        # Count points from all accepted matches in this fixture
+        t1_pts = t2_pts = 0
+        accepted_count = 0
+        for mid in f.get("matchIds", []):
+            m = match_map.get(mid)
+            if not m or m.get("status") != "accepted":
+                continue
+            accepted_count += 1
+            if m.get("matchType") == "doubles":
+                score = m.get("score", {})
+                wt = m.get("winnerTeam") or _resolve_winner_team(
+                    score, lg["sport"], lg.get("rules", {}).get("scoringFormat"))
+                t1_submitter = bool(set(m.get("team1PlayerIds", [])) & t1_player_ids)
+                if (wt == "team1" and t1_submitter) or (wt == "team2" and not t1_submitter):
+                    t1_pts += 1
+                else:
+                    t2_pts += 1
+            else:
+                winner_raw = m.get("winner")
+                if winner_raw == "submitter":
+                    winner_id = m.get("submitterId")
+                elif winner_raw == "opponent":
+                    winner_id = m.get("opponentId")
+                else:
+                    winner_id = winner_raw
+                wt = p2t.get(winner_id)
+                if wt == t1_id:
+                    t1_pts += 1
+                elif wt == t2_id:
+                    t2_pts += 1
+
+        # Only count fixtures that have at least one accepted match
+        if accepted_count == 0:
+            continue
+
+        # Award league points: 3 for win, 1 each for draw
+        for tid, pts_for, pts_against in [(t1_id, t1_pts, t2_pts), (t2_id, t2_pts, t1_pts)]:
+            if tid not in team_stats:
+                continue
+            team_stats[tid]["matchPtsFor"] += pts_for
+            team_stats[tid]["matchPtsAgainst"] += pts_against
+
+        if t1_pts > t2_pts:
+            if t1_id in team_stats: team_stats[t1_id]["wins"] += 1; team_stats[t1_id]["points"] += 3
+            if t2_id in team_stats: team_stats[t2_id]["losses"] += 1
+        elif t2_pts > t1_pts:
+            if t2_id in team_stats: team_stats[t2_id]["wins"] += 1; team_stats[t2_id]["points"] += 3
+            if t1_id in team_stats: team_stats[t1_id]["losses"] += 1
         else:
-            for tid in (t1, t2):
+            for tid in (t1_id, t2_id):
                 if tid in team_stats: team_stats[tid]["draws"] += 1; team_stats[tid]["points"] += 1
-    sorted_teams = sorted(team_stats.values(), key=lambda x: (-x["points"], -(x["matchPtsFor"] - x["matchPtsAgainst"])))
-    for i, s in enumerate(sorted_teams): s["rank"] = i + 1
+
+    sorted_teams = sorted(
+        team_stats.values(),
+        key=lambda x: (-x["points"], -(x["matchPtsFor"] - x["matchPtsAgainst"]))
+    )
+    for i, s in enumerate(sorted_teams):
+        s["rank"] = i + 1
+
+    # Individual player standings from all accepted fixture matches
     fixture_match_ids = {mid for f in fixtures for mid in f.get("matchIds", [])}
     player_map = {p["id"]: p for p in lg.get("players", [])}
-    team_by_player = {pid: t["id"] for t in teams for pid in t.get("playerIds", [])}
     player_stats: dict = {}
     scoring = {**default_rules(), **lg.get("rules", {})}.get("scoring", {"win": 3, "loss": 0})
     for m in all_matches:
@@ -2963,8 +3023,13 @@ def api_team_standings(league_id: str):
                     else:
                         player_stats[pid]["losses"] += 1; player_stats[pid]["points"] += scoring.get("loss", 0)
         else:
-            wr = m.get("winner")
-            winner_id = m.get("submitterId") if wr == "submitter" else m.get("opponentId") if wr == "opponent" else wr
+            winner_raw = m.get("winner")
+            if winner_raw == "submitter":
+                winner_id = m.get("submitterId")
+            elif winner_raw == "opponent":
+                winner_id = m.get("opponentId")
+            else:
+                winner_id = winner_raw
             for pid in [m.get("submitterId"), m.get("opponentId")]:
                 if not pid: continue
                 player_stats.setdefault(pid, {"wins": 0, "losses": 0, "points": 0})
@@ -2972,10 +3037,13 @@ def api_team_standings(league_id: str):
                     player_stats[pid]["wins"] += 1; player_stats[pid]["points"] += scoring.get("win", 3)
                 else:
                     player_stats[pid]["losses"] += 1; player_stats[pid]["points"] += scoring.get("loss", 0)
+
     individual = sorted(
         [{"player": player_map[pid], "teamId": team_by_player.get(pid), **stats}
          for pid, stats in player_stats.items() if pid in player_map],
         key=lambda x: (-x["points"], -x["wins"])
     )
-    for i, row in enumerate(individual): row["rank"] = i + 1
-    return {"success": True, "teamStandings": sorted_teams, "individualStandings": individual, "teams": {t["id"]: t for t in teams}}
+    for i, row in enumerate(individual):
+        row["rank"] = i + 1
+    return {"success": True, "teamStandings": sorted_teams, "individualStandings": individual,
+            "teams": {t["id"]: t for t in teams}}
