@@ -398,18 +398,21 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             ...(isTeamLeague && teamPhase !== 'ranking'
               ? [
                   ['team-standings', '📊 Team Standings'] as [StandingsTab, string],
-                  ['team-fixtures', '📅 Fixtures'] as [StandingsTab, string],
+                  ['team-fixtures', '📋 Pending'] as [StandingsTab, string],
+                  ['matches', '🎾 Matches'] as [StandingsTab, string],
+                  ['availability', '📆 Find a Match'] as [StandingsTab, string],
+                  ['rules', '📖 League Rules'] as [StandingsTab, string],
                   ['team-individual', '👤 Individual'] as [StandingsTab, string],
                 ]
               : []),
             ...(!isTeamLeague ? [['standings', '📊 Standings'] as [StandingsTab, string]] : []),
             ...(!isTeamLeague ? [['schedule', '📋 Pending'] as [StandingsTab, string]] : []),
-            ['matches', '🎾 Matches'],
-            ['availability', '📆 Find a Match'],
+            ...(!isTeamLeague ? [['matches', '🎾 Matches'] as [StandingsTab, string]] : []),
+            ...(!isTeamLeague ? [['availability', '📆 Find a Match'] as [StandingsTab, string]] : []),
             ...(!isTeamLeague ? [['rounds', '📅 Rounds'] as [StandingsTab, string]] : []),
             ...(!isDoubles && !isTeamLeague ? [['breakdown', '📈 Trends']] as [StandingsTab, string][] : []),
             // ['results', '🎯 Match Results'], // hidden — code preserved below
-            ['rules', '📖 League Rules'],
+            ...(!isTeamLeague ? [['rules', '📖 League Rules'] as [StandingsTab, string]] : []),
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
             <button

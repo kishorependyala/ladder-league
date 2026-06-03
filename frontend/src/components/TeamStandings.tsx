@@ -398,13 +398,13 @@ export default function TeamStandings({ league, user, isAdmin, view }: Props) {
       {view === 'fixtures' && (
         <div style={{ display: 'grid', gap: '0.85rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <h4 style={{ margin: 0, color: '#92400e', fontWeight: 700 }}>🔄 Round Robin Fixtures</h4>
-            <span style={{ ...mutedText, fontSize: '0.82rem' }}>{fixtures.length} fixture{fixtures.length !== 1 ? 's' : ''} · {fixtures.filter(f => f.status === 'completed').length} completed</span>
+            <h4 style={{ margin: 0, color: '#92400e', fontWeight: 700 }}>⏳ Pending Fixtures</h4>
+            <span style={{ ...mutedText, fontSize: '0.82rem' }}>{fixtures.filter(f => f.status !== 'completed').length} pending · {fixtures.filter(f => f.status === 'completed').length} completed</span>
           </div>
 
-          {fixtures.length === 0 && <p style={{ ...mutedText, fontStyle: 'italic' }}>No fixtures generated yet.</p>}
+          {fixtures.filter(f => f.status !== 'completed').length === 0 && <p style={{ ...mutedText, fontStyle: 'italic' }}>No pending fixtures — all done! 🎉</p>}
 
-          {fixtures.slice().sort((a, b) => a.round - b.round).map(f => {
+          {fixtures.slice().sort((a, b) => a.round - b.round).filter(f => f.status !== 'completed').map(f => {
             const t1 = teamsMap[f.team1Id];
             const t2 = teamsMap[f.team2Id];
             const t1Players = (t1?.playerIds ?? []).map(id => playerMap[id]).filter(Boolean) as Player[];
