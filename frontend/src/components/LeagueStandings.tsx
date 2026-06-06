@@ -439,27 +439,39 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
         {activeTab === 'standings' && !isDoubles && (
           <div style={{ overflowX: 'auto', display: 'grid', gap: '0.8rem' }}>
             <h3 style={subheading}>Standings</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr>
-                  {['Rank', 'Player', 'W', 'L', 'Points'].map(label => (
+                  {['Rank', 'Player', 'W', 'W%', 'Sets W', 'Sets W%', 'Games W', 'Games W%', 'Pts'].map(label => (
                     <th key={label} style={tableHeadCell}>{label}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {standings.map(row => (
-                  <tr key={row.player.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
-                    <td style={tableCell}>{row.rank}</td>
-                    <td style={{ ...tableCell, fontWeight: 700 }}>{row.player.firstName} {row.player.lastName}</td>
-                    <td style={tableCell}>{row.wins}</td>
-                    <td style={tableCell}>{row.losses}</td>
-                    <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
-                  </tr>
-                ))}
+                {standings.map(row => {
+                  const totalM = row.wins + row.losses;
+                  const totalS = (row.sets_won ?? 0) + (row.sets_lost ?? 0);
+                  const totalG = (row.games_won ?? 0) + (row.games_lost ?? 0);
+                  const winPct = totalM > 0 ? Math.round(row.wins / totalM * 100) : 0;
+                  const setPct = totalS > 0 ? Math.round((row.sets_won ?? 0) / totalS * 100) : 0;
+                  const gamePct = totalG > 0 ? Math.round((row.games_won ?? 0) / totalG * 100) : 0;
+                  return (
+                    <tr key={row.player.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
+                      <td style={tableCell}>{row.rank}</td>
+                      <td style={{ ...tableCell, fontWeight: 700 }}>{row.player.firstName} {row.player.lastName}</td>
+                      <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
+                      <td style={tableCell}>{totalM > 0 ? `${winPct}%` : '—'}</td>
+                      <td style={tableCell}>{row.sets_won ?? 0}</td>
+                      <td style={tableCell}>{totalS > 0 ? `${setPct}%` : '—'}</td>
+                      <td style={tableCell}>{row.games_won ?? 0}</td>
+                      <td style={tableCell}>{totalG > 0 ? `${gamePct}%` : '—'}</td>
+                      <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
+                    </tr>
+                  );
+                })}
                 {!loading && standings.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ ...tableCell, textAlign: 'center', color: '#9ca3af' }}>No standings yet.</td>
+                    <td colSpan={9} style={{ ...tableCell, textAlign: 'center', color: '#9ca3af' }}>No standings yet.</td>
                   </tr>
                 )}
               </tbody>

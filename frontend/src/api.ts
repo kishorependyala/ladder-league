@@ -213,6 +213,10 @@ export interface StandingsRow {
   losses: number;
   points: number;
   rank: number;
+  sets_won: number;
+  sets_lost: number;
+  games_won: number;
+  games_lost: number;
   matchLog: MatchLogEntry[];
 }
 
