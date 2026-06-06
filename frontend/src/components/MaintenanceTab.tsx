@@ -29,7 +29,7 @@ export default function MaintenanceTab({ phone }: Props) {
   const [syncError, setSyncError] = useState('');
 
   const [upsetBusy, setUpsetBusy] = useState(false);
-  const [upsetResult, setUpsetResult] = useState<{ leagueId: string; leagueName: string; matchesFixed: number }[] | null>(null);
+  const [upsetResult, setUpsetResult] = useState<{ leagueId: string; leagueName: string; matchesFixed: number; initialRankingSaved: boolean }[] | null>(null);
   const [upsetError, setUpsetError] = useState('');
 
   const runAudit = async () => {
@@ -146,12 +146,15 @@ export default function MaintenanceTab({ phone }: Props) {
         {upsetError && <div style={S.errorBox}>{upsetError}</div>}
         {upsetResult !== null && (
           upsetResult.length === 0
-            ? <div style={S.successBox}>✅ All matches already have stored bonuses — nothing to fix.</div>
+            ? <div style={S.successBox}>✅ All leagues already up to date — nothing to fix.</div>
             : <div style={S.successBox}>
-                ✅ Fixed matches in {upsetResult.length} league{upsetResult.length !== 1 ? 's' : ''}:
+                ✅ Fixed {upsetResult.length} league{upsetResult.length !== 1 ? 's' : ''}:
                 {upsetResult.map(r => (
                   <div key={r.leagueId} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
-                    <em>{r.leagueName}</em>: {r.matchesFixed} match{r.matchesFixed !== 1 ? 'es' : ''} updated
+                    <em>{r.leagueName}</em>:
+                    {r.initialRankingSaved && ' ✓ initial ranking snapshot saved'}
+                    {r.initialRankingSaved && r.matchesFixed > 0 && ','}
+                    {r.matchesFixed > 0 && ` ✓ ${r.matchesFixed} match${r.matchesFixed !== 1 ? 'es' : ''} upset bonus updated`}
                   </div>
                 ))}
               </div>

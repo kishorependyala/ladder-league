@@ -2573,7 +2573,8 @@ def api_fix_player_ids(data: dict = Body(...)):
 @app.post("/api/admin/maintenance/fix-upset-bonus")
 def api_fix_upset_bonus(data: dict = Body(...)):
     """Recompute and persist upset bonuses for all existing matches using each league's
-    initial seed ranking. Fixes matches that were saved before upset bonuses were stamped."""
+    initial seed ranking. Also backfills the initial ranking snapshot in rankings.json
+    for leagues that were started before snapshot support was added."""
     phone = data.get("phone")
     if not is_super_admin(phone):
         return {"success": False, "message": "Not authorized"}
@@ -2583,50 +2584,68 @@ def api_fix_upset_bonus(data: dict = Body(...)):
     for lg in list_leagues():
         if lg.get("status") not in ("active", "playoffs", "completed"):
             continue
+
+        rdata = load_league_rankings(lg["sport"], lg["id"])
+        initial_saved = False
+        initial_rankings_saved = False
+
+        # ── Backfill initial ranking snapshot if missing ──────────────
+        if not rdata.get("initial"):
+            # Recompute from stackRanks (user votes) if available
+            if lg.get("stackRanks"):
+                initial_player_ids = compute_final_ranking(lg)
+            else:
+                initial_player_ids = lg.get("finalRanking", [p["id"] for p in lg["players"]])
+            rdata["initial"] = {
+                "savedAt": datetime.now().isoformat(),
+                "rankings": [{"playerId": pid, "rank": idx + 1} for idx, pid in enumerate(initial_player_ids)],
+            }
+            if not rdata.get("rounds"):
+                rdata["rounds"] = []
+            save_league_rankings(lg["sport"], lg["id"], rdata)
+            initial_saved = True
+            initial_rankings_saved = True
+
+        # Use the saved initial ranking as seed for upset bonus calculation
+        seed = [r["playerId"] for r in sorted(rdata["initial"]["rankings"], key=lambda r: r["rank"])]
+        ranking_positions = {pid: idx for idx, pid in enumerate(seed)}
+
         rules = {**default_rules(), **lg.get("rules", {})}
         bonus_value = rules.get("upsetBonus", 0)
-        if not bonus_value:
-            continue  # league has no upset bonus configured
-
-        # Use initial ranking from rankings.json; fall back to finalRanking
-        rdata = load_league_rankings(lg["sport"], lg["id"])
-        if rdata.get("initial"):
-            seed = [r["playerId"] for r in sorted(rdata["initial"]["rankings"], key=lambda r: r["rank"])]
-        else:
-            seed = lg.get("finalRanking", [p["id"] for p in lg["players"]])
-        ranking_positions = {pid: idx for idx, pid in enumerate(seed)}
 
         matches = list_matches(lg["sport"], lg["id"])
         matches_fixed = 0
-        for m in matches:
-            if m.get("status") != "accepted" or m.get("isPlayoff") or m.get("matchType") == "doubles":
-                continue
-            if "upsetBonus" in m:
-                continue  # already has stored bonus — skip
-            sid = m.get("submitterId")
-            oid = m.get("opponentId")
-            winner = _match_winner_player_id(m)
-            if not winner:
-                score = m.get("score", {})
-                sets = score.get("sets", [])
-                if sets:
-                    computed = compute_match_winner(sets, lg["sport"], rules.get("scoringFormat"))
-                    winner = sid if computed == "submitter" else oid
-                else:
-                    winner = sid if score.get("submitter", 0) >= score.get("opponent", 0) else oid
-            if not winner:
-                continue
-            loser = oid if winner == sid else sid
-            ws = ranking_positions.get(winner)
-            ls = ranking_positions.get(loser)
-            m["upsetBonus"] = bonus_value if (ws is not None and ls is not None and ws > ls) else 0
-            save_match(m)
-            matches_fixed += 1
+        if bonus_value:
+            for m in matches:
+                if m.get("status") != "accepted" or m.get("isPlayoff") or m.get("matchType") == "doubles":
+                    continue
+                if "upsetBonus" in m:
+                    continue  # already stamped — skip
+                sid = m.get("submitterId")
+                oid = m.get("opponentId")
+                winner = _match_winner_player_id(m)
+                if not winner:
+                    score = m.get("score", {})
+                    sets = score.get("sets", [])
+                    if sets:
+                        computed = compute_match_winner(sets, lg["sport"], rules.get("scoringFormat"))
+                        winner = sid if computed == "submitter" else oid
+                    else:
+                        winner = sid if score.get("submitter", 0) >= score.get("opponent", 0) else oid
+                if not winner:
+                    continue
+                loser = oid if winner == sid else sid
+                ws = ranking_positions.get(winner)
+                ls = ranking_positions.get(loser)
+                m["upsetBonus"] = bonus_value if (ws is not None and ls is not None and ws > ls) else 0
+                save_match(m)
+                matches_fixed += 1
 
-        if matches_fixed > 0:
+        if initial_saved or matches_fixed > 0:
             fixed_leagues.append({
                 "leagueId": lg["id"],
                 "leagueName": lg.get("name", lg["id"]),
+                "initialRankingSaved": initial_rankings_saved,
                 "matchesFixed": matches_fixed,
             })
 

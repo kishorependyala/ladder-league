@@ -645,7 +645,7 @@ export function purgeStaleVotes(phone: string): Promise<{ success: boolean; purg
   return post('/api/admin/maintenance/purge-stale-votes', { phone });
 }
 
-export function fixUpsetBonus(phone: string): Promise<{ success: boolean; fixedLeagues: { leagueId: string; leagueName: string; matchesFixed: number }[]; message?: string }> {
+export function fixUpsetBonus(phone: string): Promise<{ success: boolean; fixedLeagues: { leagueId: string; leagueName: string; matchesFixed: number; initialRankingSaved: boolean }[]; message?: string }> {
   return post('/api/admin/maintenance/fix-upset-bonus', { phone });
 }
 
