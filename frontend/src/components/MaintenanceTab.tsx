@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { auditData, fixPlayerIds, migrateLeagueIds, purgeStaleVotes, syncPlayerNames, type DataIssue } from '../api';
+import { auditData, fixPlayerIds, fixUpsetBonus, migrateLeagueIds, purgeStaleVotes, syncPlayerNames, type DataIssue } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type Props = { phone: string };
@@ -27,6 +27,10 @@ export default function MaintenanceTab({ phone }: Props) {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncResult, setSyncResult] = useState<{ leaguesUpdated: number; usersProcessed: number } | null>(null);
   const [syncError, setSyncError] = useState('');
+
+  const [upsetBusy, setUpsetBusy] = useState(false);
+  const [upsetResult, setUpsetResult] = useState<{ leagueId: string; leagueName: string; matchesFixed: number }[] | null>(null);
+  const [upsetError, setUpsetError] = useState('');
 
   const runAudit = async () => {
     setAuditing(true); setAuditError(''); setIssues(null); setResults({});
@@ -62,6 +66,16 @@ export default function MaintenanceTab({ phone }: Props) {
       else setSyncError(res.message || 'Sync failed.');
     } catch (e) { setSyncError(e instanceof Error ? e.message : 'Error'); }
     setSyncBusy(false);
+  };
+
+  const runFixUpsetBonus = async () => {
+    setUpsetBusy(true); setUpsetError(''); setUpsetResult(null);
+    try {
+      const res = await fixUpsetBonus(phone);
+      if (res.success) setUpsetResult(res.fixedLeagues);
+      else setUpsetError(res.message || 'Fix failed.');
+    } catch (e) { setUpsetError(e instanceof Error ? e.message : 'Error'); }
+    setUpsetBusy(false);
   };
 
   // Group issues by fix type
@@ -111,6 +125,36 @@ export default function MaintenanceTab({ phone }: Props) {
             updated names in <strong>{syncResult.leaguesUpdated}</strong> league{syncResult.leaguesUpdated !== 1 ? 's' : ''}.
             {syncResult.leaguesUpdated === 0 && ' All names were already in sync.'}
           </div>
+        )}
+      </div>
+
+      {/* Fix upset bonus card */}
+      <div style={{ ...S.card, display: 'grid', gap: '0.75rem' }}>
+        <div>
+          <h3 style={{ ...subheading, margin: 0 }}>⚡ Fix upset bonus points (existing data)</h3>
+          <p style={{ ...mutedText, marginTop: '0.3rem', fontSize: '0.83rem' }}>
+            Stamps the correct upset bonus on matches that were accepted before this fix was in place.
+            Uses each league's initial seed ranking as the reference. Matches that already have a stored
+            bonus are skipped. After running, standings will reflect accurate upset bonuses.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.smallBtn} disabled={upsetBusy} onClick={runFixUpsetBonus}>
+            {upsetBusy ? '⏳ Fixing…' : '⚡ Fix upset bonuses'}
+          </button>
+        </div>
+        {upsetError && <div style={S.errorBox}>{upsetError}</div>}
+        {upsetResult !== null && (
+          upsetResult.length === 0
+            ? <div style={S.successBox}>✅ All matches already have stored bonuses — nothing to fix.</div>
+            : <div style={S.successBox}>
+                ✅ Fixed matches in {upsetResult.length} league{upsetResult.length !== 1 ? 's' : ''}:
+                {upsetResult.map(r => (
+                  <div key={r.leagueId} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                    <em>{r.leagueName}</em>: {r.matchesFixed} match{r.matchesFixed !== 1 ? 'es' : ''} updated
+                  </div>
+                ))}
+              </div>
         )}
       </div>
 
