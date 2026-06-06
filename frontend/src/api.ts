@@ -649,6 +649,10 @@ export function fixUpsetBonus(phone: string): Promise<{ success: boolean; fixedL
   return post('/api/admin/maintenance/fix-upset-bonus', { phone });
 }
 
+export function recalculateAllStandings(phone: string): Promise<{ success: boolean; updated: { leagueId: string; leagueName: string }[]; message?: string }> {
+  return post('/api/admin/maintenance/recalculate-all-standings', { phone });
+}
+
 
 export function getAppConfig(phone: string): Promise<{ success: boolean; config: AppConfig; message?: string }> {
   return get(`/api/admin/config?phone=${encodeURIComponent(phone)}`);

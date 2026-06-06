@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { auditData, fixPlayerIds, fixUpsetBonus, migrateLeagueIds, purgeStaleVotes, syncPlayerNames, type DataIssue } from '../api';
+import { auditData, fixPlayerIds, fixUpsetBonus, migrateLeagueIds, purgeStaleVotes, recalculateAllStandings, syncPlayerNames, type DataIssue } from '../api';
 import { S, mutedText, subheading } from '../theme';
 
 type Props = { phone: string };
@@ -31,6 +31,10 @@ export default function MaintenanceTab({ phone }: Props) {
   const [upsetBusy, setUpsetBusy] = useState(false);
   const [upsetResult, setUpsetResult] = useState<{ leagueId: string; leagueName: string; matchesFixed: number; initialRankingSaved: boolean }[] | null>(null);
   const [upsetError, setUpsetError] = useState('');
+
+  const [recalcBusy, setRecalcBusy] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<{ leagueId: string; leagueName: string }[] | null>(null);
+  const [recalcError, setRecalcError] = useState('');
 
   const runAudit = async () => {
     setAuditing(true); setAuditError(''); setIssues(null); setResults({});
@@ -76,6 +80,16 @@ export default function MaintenanceTab({ phone }: Props) {
       else setUpsetError(res.message || 'Fix failed.');
     } catch (e) { setUpsetError(e instanceof Error ? e.message : 'Error'); }
     setUpsetBusy(false);
+  };
+
+  const runRecalcAll = async () => {
+    setRecalcBusy(true); setRecalcError(''); setRecalcResult(null);
+    try {
+      const res = await recalculateAllStandings(phone);
+      if (res.success) setRecalcResult(res.updated);
+      else setRecalcError(res.message || 'Recalculate failed.');
+    } catch (e) { setRecalcError(e instanceof Error ? e.message : 'Error'); }
+    setRecalcBusy(false);
   };
 
   // Group issues by fix type
@@ -125,6 +139,36 @@ export default function MaintenanceTab({ phone }: Props) {
             updated names in <strong>{syncResult.leaguesUpdated}</strong> league{syncResult.leaguesUpdated !== 1 ? 's' : ''}.
             {syncResult.leaguesUpdated === 0 && ' All names were already in sync.'}
           </div>
+        )}
+      </div>
+
+      {/* Recalculate all standings card */}
+      <div style={{ ...S.card, display: 'grid', gap: '0.75rem' }}>
+        <div>
+          <h3 style={{ ...subheading, margin: 0 }}>🔄 Recalculate all standings</h3>
+          <p style={{ ...mutedText, marginTop: '0.3rem', fontSize: '0.83rem' }}>
+            Recomputes rankings for every active/playoffs league using the latest ranking criteria
+            (points → wins → win% → sets won → sets win% → games won → games win%).
+            Run this after deploying a ranking logic update.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button style={S.primaryBtn} disabled={recalcBusy} onClick={runRecalcAll}>
+            {recalcBusy ? '⏳ Recalculating…' : '🔄 Recalculate all standings'}
+          </button>
+        </div>
+        {recalcError && <div style={S.errorBox}>{recalcError}</div>}
+        {recalcResult !== null && (
+          recalcResult.length === 0
+            ? <div style={S.successBox}>✅ No active leagues found.</div>
+            : <div style={S.successBox}>
+                ✅ Recalculated standings for {recalcResult.length} league{recalcResult.length !== 1 ? 's' : ''}:
+                {recalcResult.map(r => (
+                  <div key={r.leagueId} style={{ fontSize: '0.78rem', marginTop: '0.2rem' }}>
+                    <em>{r.leagueName}</em>
+                  </div>
+                ))}
+              </div>
         )}
       </div>
 

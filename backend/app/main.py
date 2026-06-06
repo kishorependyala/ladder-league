@@ -1996,6 +1996,27 @@ def _refresh_standings_ranking(lg: dict) -> None:
     _save_round_snapshots(lg)
 
 
+
+@app.post("/api/admin/maintenance/recalculate-all-standings")
+def api_recalculate_all_standings(data: dict = Body(...)):
+    """Recompute finalRanking for every active/playoffs league using the new ranking criteria."""
+    phone = data.get("phone")
+    if not is_super_admin(phone):
+        return {"success": False, "message": "Not authorized"}
+
+    updated = []
+    for lg in list_leagues():
+        if lg.get("status") not in ("active", "playoffs"):
+            continue
+        _refresh_standings_ranking(lg)
+        lg = get_league_by_id(lg["id"])  # reload after save
+        top3 = [lg["players"][i]["firstName"] if i < len(lg["players"]) else "?"
+                for i in range(min(3, len(lg.get("finalRanking", []))))]
+        updated.append({"leagueId": lg["id"], "leagueName": lg.get("name", lg["id"])})
+
+    return {"success": True, "updated": updated}
+
+
 @app.post("/api/leagues/{league_id}/recalculate-standings")
 def api_recalculate_standings(league_id: str, data: dict = Body(...)):
     """Recompute finalRanking from current match results (admin action for active/playoffs leagues)."""
