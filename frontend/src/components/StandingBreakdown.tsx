@@ -168,8 +168,9 @@ export default function StandingBreakdown({ league }: Props) {
     <div style={{ display: 'grid', gap: '0.75rem' }}>
       <p style={{ ...mutedText, fontSize: '0.82rem' }}>
         Rank 1 is best · 
-        <span style={{ color: '#6d28d9', fontWeight: 600 }}> Start</span> = seed rank
-        {currentRoundIndex !== null && <span> · <span style={{ color: '#d97706', fontWeight: 600 }}>Current</span> = in-progress rank</span>}
+        <span style={{ color: '#6d28d9', fontWeight: 600 }}> Start</span> = initial voted ranking
+        {xPoints.some(x => !x.isCurrent && x.roundIndex !== null) && <span> · completed rounds = saved snapshot</span>}
+        {currentRoundIndex !== null && <span> · <span style={{ color: '#d97706', fontWeight: 600 }}>Current</span> = live rank (round in progress)</span>}
       </p>
       <RankChart xPoints={xPoints} playerLines={playerLines} total={breakdown.length} />
     </div>

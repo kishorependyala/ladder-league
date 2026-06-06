@@ -203,6 +203,7 @@ from app.leagues import (
     save_league, get_league, get_league_by_id, list_leagues, delete_league,
     save_match, get_match, list_matches, delete_match, get_pending_matches_for_user,
     get_league_availability, save_player_availability,
+    load_league_rankings, save_league_rankings,
     is_super_admin, add_super_admin, load_superadmin_phones,
     compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
     default_rules, compute_match_winner, generate_playoffs,
@@ -775,10 +776,19 @@ def api_start_league(league_id: str, data: dict = Body(...)):
         end_iso = lg.get("endDate")
         lg["blocks"] = generate_blocks(start_iso, block_days, end_iso)
     save_league(lg)
+    # Save initial ranking snapshot (user-voted seed order)
+    initial_snapshot = [
+        {"playerId": pid, "rank": idx + 1}
+        for idx, pid in enumerate(lg["finalRanking"])
+    ]
+    rdata = load_league_rankings(lg["sport"], lg["id"])
+    if not rdata.get("initial"):
+        rdata["initial"] = {
+            "savedAt": datetime.now().isoformat(),
+            "rankings": initial_snapshot,
+        }
+        save_league_rankings(lg["sport"], lg["id"], rdata)
     return {"success": True, "league": lg}
-
-
-@app.put("/api/leagues/{league_id}/blocks")
 def api_update_blocks(league_id: str, data: dict = Body(...)):
     phone = data.get("phone")
     lg = get_league_by_id(league_id)
@@ -1025,6 +1035,15 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
         if m.get("status") == "accepted":
             _sync_playoff_match_result(lg, m)
             _refresh_standings_ranking(lg)
+            # Tag match with each player's rank from the last completed round
+            rank_map = _get_last_round_ranks(lg)
+            player_ids = (
+                m.get("team1PlayerIds", []) + m.get("team2PlayerIds", [])
+                if m.get("matchType") == "doubles"
+                else [m.get("submitterId"), m.get("opponentId")]
+            )
+            m["rankAtTime"] = {pid: rank_map[pid] for pid in player_ids if pid and pid in rank_map}
+            save_match(m)
         return {"success": True, "match": m}
 
     # ── Doubles: all four players (or admin) must accept ──────────────
@@ -1733,8 +1752,10 @@ def api_league_playoffs(league_id: str):
     return lg.get("playoffs") or {"groups": []}
 
 
-def _compute_league_standings(lg: dict) -> list[dict]:
+def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
     matches = list_matches(lg["sport"], lg["id"])
+    if cutoff_date:
+        matches = [m for m in matches if (m.get("datePlayed") or "") <= cutoff_date]
     rules = {**default_rules(), **lg.get("rules", {})}
     scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
     final_ranking = lg.get("finalRanking", [])
@@ -1891,6 +1912,52 @@ def api_standings(league_id: str):
     return {"leagueId": league_id, "standings": _compute_league_standings(lg)}
 
 
+def _snapshot_rankings(lg: dict, cutoff_date: str = None) -> list:
+    """Return [{playerId, rank}] from standings, optionally up to cutoff_date."""
+    standings = _compute_league_standings(lg, cutoff_date=cutoff_date)
+    return [{"playerId": s["player"]["id"], "rank": s["rank"]} for s in standings]
+
+
+def _save_round_snapshots(lg: dict) -> None:
+    """Persist end-of-round ranking snapshots for any completed blocks not yet saved."""
+    from datetime import date as _date
+    blocks = lg.get("blocks", [])
+    if not blocks:
+        return
+    today = _date.today().isoformat()
+    rdata = load_league_rankings(lg["sport"], lg["id"])
+    saved_rounds = {r["roundIndex"]: r for r in rdata.get("rounds", [])}
+    changed = False
+    for i, block in enumerate(blocks):
+        end_date = block.get("endDate", "")
+        if end_date < today and i not in saved_rounds:
+            snapshot = _snapshot_rankings(lg, cutoff_date=end_date)
+            saved_rounds[i] = {
+                "roundIndex": i,
+                "label": f"Round {i + 1}",
+                "endDate": end_date,
+                "savedAt": datetime.now().isoformat(),
+                "rankings": snapshot,
+            }
+            changed = True
+    if changed:
+        rdata["rounds"] = sorted(saved_rounds.values(), key=lambda r: r["roundIndex"])
+        save_league_rankings(lg["sport"], lg["id"], rdata)
+
+
+def _get_last_round_ranks(lg: dict) -> dict:
+    """Return {playerId: rank} from the most recently completed round snapshot,
+    falling back to the initial snapshot, then to finalRanking order."""
+    rdata = load_league_rankings(lg["sport"], lg["id"])
+    rounds = sorted(rdata.get("rounds", []), key=lambda r: r["roundIndex"], reverse=True)
+    if rounds:
+        return {r["playerId"]: r["rank"] for r in rounds[0]["rankings"]}
+    if rdata.get("initial"):
+        return {r["playerId"]: r["rank"] for r in rdata["initial"]["rankings"]}
+    final_ranking = lg.get("finalRanking", [])
+    return {pid: idx + 1 for idx, pid in enumerate(final_ranking)}
+
+
 def _refresh_standings_ranking(lg: dict) -> None:
     """Recompute finalRanking from current match results and persist. Only for active/playoffs leagues."""
     if lg.get("status") not in ("active", "playoffs"):
@@ -1898,6 +1965,7 @@ def _refresh_standings_ranking(lg: dict) -> None:
     sorted_stats = _compute_league_standings(lg)
     lg["finalRanking"] = [s["player"]["id"] for s in sorted_stats]
     save_league(lg)
+    _save_round_snapshots(lg)
 
 
 @app.post("/api/leagues/{league_id}/recalculate-standings")
@@ -2005,103 +2073,38 @@ def _compute_standing_breakdown(lg: dict) -> dict:
                 week_num += 1
 
     rules = {**default_rules(), **lg.get("rules", {})}
-    scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
     final_ranking = lg.get("finalRanking", [])
 
-    def _rank_players_from_matches(match_subset: list) -> dict:
-        """Return {playerId: rank} for the given match subset."""
-        stats: dict = {}
-        for p in lg["players"]:
-            stats[p["id"]] = {"points": 0}
+    # ── Load saved ranking snapshots ─────────────────────────────────
+    rdata = load_league_rankings(lg["sport"], lg["id"])
+    saved_rounds = {r["roundIndex"]: r for r in rdata.get("rounds", [])}
 
-        for m in match_subset:
-            # ── Doubles match ────────────────────────────────────────
-            if m.get("matchType") == "doubles":
-                team1_ids = m.get("team1PlayerIds", [])
-                team2_ids = m.get("team2PlayerIds", [])
-                winner_team = m.get("winnerTeam")
-                if not winner_team:
-                    score = m.get("score", {})
-                    sets = score.get("sets", [])
-                    scoring_fmt = rules.get("scoringFormat")
-                    if sets:
-                        raw = compute_match_winner(sets, lg["sport"], scoring_fmt)
-                        winner_team = "team1" if raw == "submitter" else "team2" if raw == "opponent" else None
-                    else:
-                        sub_score = score.get("submitter", 0)
-                        opp_score = score.get("opponent", 0)
-                        winner_team = "team1" if sub_score >= opp_score else "team2"
-                if not winner_team:
-                    continue
-                winning_ids = team1_ids if winner_team == "team1" else team2_ids
-                losing_ids = team2_ids if winner_team == "team1" else team1_ids
-                win_pts = scoring.get("win", 3)
-                loss_pts = scoring.get("loss", 0)
-                for pid in winning_ids:
-                    if pid in stats:
-                        stats[pid]["points"] += win_pts
-                for pid in losing_ids:
-                    if pid in stats:
-                        stats[pid]["points"] += loss_pts
-                continue
+    # ── Start-of-league rank: use saved initial snapshot if available ─
+    if rdata.get("initial"):
+        start_ranks = {r["playerId"]: r["rank"] for r in rdata["initial"]["rankings"]}
+    else:
+        seed_order = final_ranking if final_ranking else [p["id"] for p in lg["players"]]
+        start_ranks = {
+            pid: seed_order.index(pid) + 1 if pid in seed_order else len(lg["players"])
+            for pid in [p["id"] for p in lg["players"]]
+        }
 
-            sid = m.get("submitterId")
-            oid = m.get("opponentId")
-            if not sid or not oid:
-                continue
-            winner = _match_winner_player_id(m)
-            if not winner:
-                score = m.get("score", {})
-                sets = score.get("sets", [])
-                if sets:
-                    scoring_fmt = rules.get("scoringFormat")
-                    computed = compute_match_winner(sets, lg["sport"], scoring_fmt)
-                    winner = sid if computed == "submitter" else oid
-                else:
-                    sub_score = score.get("submitter", 0)
-                    opp_score = score.get("opponent", 0)
-                    winner = sid if sub_score >= opp_score else oid
-            loser = oid if winner == sid else sid
-
-            win_pts = scoring.get("win", 3)
-            loss_pts = scoring.get("loss", 0)
-            upset_bonus = 0
-            ranking_positions = {pid: idx for idx, pid in enumerate(final_ranking)}
-            ws = ranking_positions.get(winner)
-            ls = ranking_positions.get(loser)
-            if ws is not None and ls is not None and ws > ls:
-                upset_bonus = rules.get("upsetBonus", 0)
-
-            if winner in stats:
-                stats[winner]["points"] += win_pts + upset_bonus
-            if loser in stats:
-                stats[loser]["points"] += loss_pts
-
-        tiebreak = final_ranking or [p["id"] for p in lg["players"]]
-        sorted_players = sorted(
-            ((pid, s["points"]) for pid, s in stats.items()),
-            key=lambda x: (-x[1], tiebreak.index(x[0]) if x[0] in tiebreak else 999)
-        )
-        return {pid: idx + 1 for idx, (pid, _) in enumerate(sorted_players)}
-
-    # ── Current standings ────────────────────────────────────────────
-    current_ranks = _rank_players_from_matches(accepted)
-
-    # ── Start-of-league rank (seed order from finalRanking or player join order) ──
-    seed_order = final_ranking if final_ranking else [p["id"] for p in lg["players"]]
-    start_ranks = {
-        pid: seed_order.index(pid) + 1 if pid in seed_order else len(lg["players"])
-        for pid in [p["id"] for p in lg["players"]]
-    }
+    # ── Current standings (live) ─────────────────────────────────────
+    current_ranks = {s["player"]["id"]: s["rank"] for s in _compute_league_standings(lg)}
 
     # ── Per-round standings ──────────────────────────────────────────
     round_rank_maps = []
-    for rnd in rounds:
+    for i, rnd in enumerate(rounds):
         end_date = rnd["endDate"]
-        # For the current ongoing round, use today as the cutoff
-        cutoff = min(end_date, today_iso)
-        subset = [m for m in accepted if (m.get("datePlayed") or "") <= cutoff]
-        round_rank_maps.append(_rank_players_from_matches(subset))
+        if end_date < today_iso and i in saved_rounds:
+            # Completed round — use the persisted snapshot
+            rank_map = {r["playerId"]: r["rank"] for r in saved_rounds[i]["rankings"]}
+        else:
+            # In-progress or no snapshot yet — compute live up to today
+            cutoff = min(end_date, today_iso)
+            rank_map = {s["player"]["id"]: s["rank"]
+                        for s in _compute_league_standings(lg, cutoff_date=cutoff)}
+        round_rank_maps.append(rank_map)
 
     # ── Assemble breakdown per player ────────────────────────────────
     breakdown = []

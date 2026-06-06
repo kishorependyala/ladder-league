@@ -117,6 +117,28 @@ def _availability_path(sport: str, league_id: str) -> str:
     return os.path.join(_league_dir(sport, league_id), "availability.json")
 
 
+def _rankings_path(sport: str, league_id: str) -> str:
+    """Ranking snapshots stored as {leagueId}/rankings.json."""
+    return os.path.join(_league_dir(sport, league_id), "rankings.json")
+
+
+def load_league_rankings(sport: str, league_id: str) -> dict:
+    """Load saved ranking snapshots. Returns {initial: ..., rounds: [...]}."""
+    path = _rankings_path(sport, league_id)
+    if not os.path.exists(path):
+        return {"initial": None, "rounds": []}
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+def save_league_rankings(sport: str, league_id: str, data: dict) -> None:
+    """Persist ranking snapshots to rankings.json."""
+    path = _rankings_path(sport, league_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
 def get_league_availability(sport: str, league_id: str) -> list:
     """Return all players' availability entries for a league."""
     path = _availability_path(sport, league_id)
