@@ -1396,6 +1396,27 @@ def _sets_games_for_team(sets: list, for_team1: bool) -> tuple[int, int]:
     return sets_won, games_won
 
 
+def _standings_sort_key(x: dict):
+    """Sort key implementing the ranking tiebreak order:
+    points → matches won → win% → sets won → sets win% → games won → games win%
+    """
+    total_matches = x["wins"] + x["losses"]
+    win_pct = x["wins"] / total_matches if total_matches > 0 else 0.0
+    total_sets = x.get("sets_won", 0) + x.get("sets_lost", 0)
+    sets_win_pct = x.get("sets_won", 0) / total_sets if total_sets > 0 else 0.0
+    total_games = x.get("games_won", 0) + x.get("games_lost", 0)
+    games_win_pct = x.get("games_won", 0) / total_games if total_games > 0 else 0.0
+    return (
+        -x["points"],
+        -x["wins"],
+        -win_pct,
+        -x.get("sets_won", 0),
+        -sets_win_pct,
+        -x.get("games_won", 0),
+        -games_win_pct,
+    )
+
+
 def _compute_adhoc_doubles_standings(lg: dict) -> dict:
     """Compute dynamic pair standings for an ad-hoc doubles league from match history."""
     matches = list_matches(lg["sport"], lg["id"])
@@ -1433,9 +1454,9 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
         t1_sets, t1_games = _sets_games_for_team(raw_sets, for_team1=True)
         t2_sets, t2_games = _sets_games_for_team(raw_sets, for_team1=False)
 
-        for team_ids, opp_ids, is_winner, sw, gw in [
-            (t1, t2, winner_team == "team1", t1_sets, t1_games),
-            (t2, t1, winner_team == "team2", t2_sets, t2_games),
+        for team_ids, opp_ids, is_winner, sw, gw, opp_sw, opp_gw in [
+            (t1, t2, winner_team == "team1", t1_sets, t1_games, t2_sets, t2_games),
+            (t2, t1, winner_team == "team2", t2_sets, t2_games, t1_sets, t1_games),
         ]:
             key = pair_key(team_ids[0], team_ids[1])
             opp_key = pair_key(opp_ids[0], opp_ids[1])
@@ -1448,10 +1469,14 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
                         "player2Id": p2,
                         "name": f"{_get_player_first(lg, p1)}/{_get_player_first(lg, p2)}",
                     },
-                    "wins": 0, "losses": 0, "points": 0, "sets_won": 0, "games_won": 0, "rank": 0, "matchLog": [],
+                    "wins": 0, "losses": 0, "points": 0,
+                    "sets_won": 0, "sets_lost": 0, "games_won": 0, "games_lost": 0,
+                    "rank": 0, "matchLog": [],
                 }
             stats[key]["sets_won"] += sw
+            stats[key]["sets_lost"] += opp_sw
             stats[key]["games_won"] += gw
+            stats[key]["games_lost"] += opp_gw
             if is_winner:
                 stats[key]["wins"] += 1
                 stats[key]["points"] += win_pts
@@ -1467,7 +1492,7 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
                     "result": "loss", "basePoints": loss_pts, "score": m.get("score"), "submittedAt": submitted_at,
                 })
 
-    sorted_stats = sorted(stats.values(), key=lambda x: (-x["points"], -x["wins"], -x["sets_won"], -x["games_won"]))
+    sorted_stats = sorted(stats.values(), key=_standings_sort_key)
     for i, s in enumerate(sorted_stats):
         s["rank"] = i + 1
     return {"leagueId": lg["id"], "standings": sorted_stats}
@@ -1488,7 +1513,9 @@ def _compute_doubles_standings(lg: dict) -> dict:
             "losses": 0,
             "points": 0,
             "sets_won": 0,
+            "sets_lost": 0,
             "games_won": 0,
+            "games_lost": 0,
             "rank": 0,
             "matchLog": [],
         }
@@ -1525,9 +1552,13 @@ def _compute_doubles_standings(lg: dict) -> dict:
         p2_sets, p2_games = _sets_games_for_team(raw_sets, for_team1=False)
 
         stats[p1_id]["sets_won"] += p1_sets
+        stats[p1_id]["sets_lost"] += p2_sets
         stats[p1_id]["games_won"] += p1_games
+        stats[p1_id]["games_lost"] += p2_games
         stats[p2_id]["sets_won"] += p2_sets
+        stats[p2_id]["sets_lost"] += p1_sets
         stats[p2_id]["games_won"] += p2_games
+        stats[p2_id]["games_lost"] += p1_games
 
         stats[winner_pair_id]["wins"] += 1
         stats[winner_pair_id]["points"] += win_pts
@@ -1542,7 +1573,7 @@ def _compute_doubles_standings(lg: dict) -> dict:
             "result": "loss", "basePoints": loss_pts, "score": m.get("score"), "submittedAt": submitted_at,
         })
 
-    sorted_stats = sorted(stats.values(), key=lambda x: (-x["points"], -x["wins"], -x["sets_won"], -x["games_won"]))
+    sorted_stats = sorted(stats.values(), key=_standings_sort_key)
     for i, s in enumerate(sorted_stats):
         s["rank"] = i + 1
     return {"leagueId": lg["id"], "standings": sorted_stats}
@@ -1711,7 +1742,11 @@ def _compute_league_standings(lg: dict) -> list[dict]:
 
     stats: dict = {}
     for p in lg["players"]:
-        stats[p["id"]] = {"player": p, "wins": 0, "losses": 0, "points": 0, "rank": 0, "matchLog": []}
+        stats[p["id"]] = {
+            "player": p, "wins": 0, "losses": 0, "points": 0, "rank": 0,
+            "sets_won": 0, "sets_lost": 0, "games_won": 0, "games_lost": 0,
+            "matchLog": [],
+        }
 
     for m in matches:
         if m.get("status") != "accepted" or m.get("isPlayoff"):
@@ -1740,10 +1775,17 @@ def _compute_league_standings(lg: dict) -> list[dict]:
             win_pts = scoring.get("win", 3)
             loss_pts = scoring.get("loss", 0)
             submitted_at = m.get("submittedAt") or m.get("createdAt")
+            raw_sets = m.get("score", {}).get("sets", [])
+            win_sets, win_games = _sets_games_for_team(raw_sets, for_team1=(winner_team == "team1"))
+            loss_sets, loss_games = _sets_games_for_team(raw_sets, for_team1=(winner_team != "team1"))
             for pid in winning_ids:
                 if pid in stats:
                     stats[pid]["wins"] += 1
                     stats[pid]["points"] += win_pts
+                    stats[pid]["sets_won"] += win_sets
+                    stats[pid]["sets_lost"] += loss_sets
+                    stats[pid]["games_won"] += win_games
+                    stats[pid]["games_lost"] += loss_games
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": losing_ids[0] if losing_ids else None,
@@ -1754,6 +1796,10 @@ def _compute_league_standings(lg: dict) -> list[dict]:
                 if pid in stats:
                     stats[pid]["losses"] += 1
                     stats[pid]["points"] += loss_pts
+                    stats[pid]["sets_won"] += loss_sets
+                    stats[pid]["sets_lost"] += win_sets
+                    stats[pid]["games_won"] += loss_games
+                    stats[pid]["games_lost"] += win_games
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": winning_ids[0] if winning_ids else None,
@@ -1787,9 +1833,20 @@ def _compute_league_standings(lg: dict) -> list[dict]:
             upset_bonus = rules.get("upsetBonus", 0)
 
         submitted_at = m.get("submittedAt") or m.get("createdAt")
+        raw_sets = m.get("score", {}).get("sets", [])
+        sid_sets, sid_games = _sets_games_for_team(raw_sets, for_team1=True)
+        oid_sets, oid_games = _sets_games_for_team(raw_sets, for_team1=False)
         if winner in stats:
             stats[winner]["wins"] += 1
             stats[winner]["points"] += win_pts + upset_bonus
+            w_sets = sid_sets if winner == sid else oid_sets
+            w_games = sid_games if winner == sid else oid_games
+            l_sets = oid_sets if winner == sid else sid_sets
+            l_games = oid_games if winner == sid else sid_games
+            stats[winner]["sets_won"] += w_sets
+            stats[winner]["sets_lost"] += l_sets
+            stats[winner]["games_won"] += w_games
+            stats[winner]["games_lost"] += l_games
             stats[winner]["matchLog"].append({
                 "matchId": m["id"],
                 "opponentId": loser,
@@ -1802,6 +1859,14 @@ def _compute_league_standings(lg: dict) -> list[dict]:
         if loser in stats:
             stats[loser]["losses"] += 1
             stats[loser]["points"] += loss_pts
+            l_sets = oid_sets if loser == oid else sid_sets
+            l_games = oid_games if loser == oid else sid_games
+            w_sets = sid_sets if loser == oid else oid_sets
+            w_games = sid_games if loser == oid else oid_games
+            stats[loser]["sets_won"] += l_sets
+            stats[loser]["sets_lost"] += w_sets
+            stats[loser]["games_won"] += l_games
+            stats[loser]["games_lost"] += w_games
             stats[loser]["matchLog"].append({
                 "matchId": m["id"],
                 "opponentId": winner,
@@ -1812,11 +1877,7 @@ def _compute_league_standings(lg: dict) -> list[dict]:
                 "submittedAt": submitted_at,
             })
 
-    tiebreak_ranking = final_ranking or [p["id"] for p in lg["players"]]
-    sorted_stats = sorted(
-        stats.values(),
-        key=lambda x: (-(x["points"]), tiebreak_ranking.index(x["player"]["id"]) if x["player"]["id"] in tiebreak_ranking else 999)
-    )
+    sorted_stats = sorted(stats.values(), key=_standings_sort_key)
     for i, s in enumerate(sorted_stats):
         s["rank"] = i + 1
     return sorted_stats
