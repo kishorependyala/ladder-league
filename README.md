@@ -9,7 +9,7 @@ A modern web application for managing ladder leagues, built with React (frontend
 - League membership management
 - Leaderboards with real match results, points, matches played, won/lost, and recent results
 - Add match scores (supports tennis, badminton, pickleball)
-- Animated, visually appealing UI
+- Animated, visually appealing UI 
 
 ## Project Structure
 

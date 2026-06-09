@@ -1,0 +1,80 @@
+{
+  "id": "table-tennis_202605240000000001",
+  "name": "Begonia",
+  "sport": "table-tennis",
+  "status": "active",
+  "adminIds": [
+    "202605160000000001"
+  ],
+  "players": [
+    {
+      "id": "202605240000000003",
+      "phone": "7327623614",
+      "firstName": "Anil",
+      "lastName": "Bhoosa"
+    },
+    {
+      "id": "202605240000000004",
+      "phone": "8049337099",
+      "firstName": "Srithik",
+      "lastName": "Bhoosa"
+    },
+    {
+      "id": "202605240000000005",
+      "phone": "7327184415",
+      "firstName": "Vihaan",
+      "lastName": "Pendyala"
+    },
+    {
+      "id": "202605160000000001",
+      "phone": "7327184414",
+      "firstName": "Kishore",
+      "lastName": "Pendyala"
+    }
+  ],
+  "startDate": "2026-05-23",
+  "endDate": "2026-05-24",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    },
+    "scoringFormat": null,
+    "matchFormat": "adhoc",
+    "minMatchesPerWeek": 1,
+    "penaltyPerMissedWeek": 1,
+    "upsetBonus": 1,
+    "joinPolicy": "until_complete",
+    "newPlayerRankPolicy": "bottom",
+    "lateJoinCap": null,
+    "doublesMode": "none"
+  },
+  "stackRanks": {
+    "202605160000000001": [
+      "202605240000000003",
+      "202605240000000004",
+      "202605240000000005",
+      "202605160000000001"
+    ]
+  },
+  "finalRanking": [
+    "202605160000000001",
+    "202605240000000005",
+    "202605240000000004",
+    "202605240000000003"
+  ],
+  "createdAt": "2026-05-24T01:46:46.950470",
+  "startedAt": "2026-05-24T01:51:45.535398",
+  "blocks": [
+    {
+      "index": 0,
+      "startDate": "2026-05-23",
+      "endDate": "2026-05-24"
+    }
+  ]
+}

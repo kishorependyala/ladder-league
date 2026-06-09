@@ -166,5 +166,131 @@
     "winnerTeam": null,
     "isPlayoff": false,
     "datePlayed": "2026-05-23"
+  },
+  {
+    "id": "202605290000000001",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605170000000007"
+    ],
+    "team2PlayerIds": [
+      "202605170000000006",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000007",
+      "202605170000000006",
+      "202605170000000001"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 3
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-29T17:06:19.119222",
+    "resolvedAt": "2026-05-29T17:06:21.333584",
+    "winnerTeam": "team1",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-29"
+  },
+  {
+    "id": "202605290000000002",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605160000000001",
+      "202605170000000006"
+    ],
+    "team2PlayerIds": [
+      "202605170000000007",
+      "202605170000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605160000000001",
+      "202605170000000006",
+      "202605170000000007",
+      "202605170000000001"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 2,
+          "opp": 6
+        }
+      ],
+      "submitterWon": false
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-29T17:06:43.185662",
+    "resolvedAt": "2026-05-29T17:06:44.452085",
+    "winnerTeam": "team2",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-29"
+  },
+  {
+    "id": "202605290000000003",
+    "leagueId": "tennis_202605220000000001",
+    "sport": "tennis",
+    "matchType": "doubles",
+    "doublesMode": "adhoc",
+    "team1PlayerIds": [
+      "202605170000000007",
+      "202605170000000006"
+    ],
+    "team2PlayerIds": [
+      "202605170000000001",
+      "202605160000000001"
+    ],
+    "submitterId": "202605160000000001",
+    "opponentId": null,
+    "adminSubmittedBy": null,
+    "requiresAllAccept": true,
+    "acceptedPlayerIds": [
+      "202605170000000007",
+      "202605170000000006",
+      "202605170000000001",
+      "202605160000000001"
+    ],
+    "pair1Id": null,
+    "pair2Id": null,
+    "score": {
+      "sets": [
+        {
+          "me": 6,
+          "opp": 2
+        }
+      ],
+      "submitterWon": true
+    },
+    "status": "accepted",
+    "submittedAt": "2026-05-29T17:07:00.575422",
+    "resolvedAt": "2026-05-29T17:07:01.922657",
+    "winnerTeam": "team1",
+    "isPlayoff": false,
+    "datePlayed": "2026-05-29"
   }
 ]

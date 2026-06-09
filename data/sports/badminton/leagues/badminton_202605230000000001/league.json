@@ -1,0 +1,167 @@
+{
+  "id": "badminton_202605230000000001",
+  "name": "Badminton",
+  "sport": "badminton",
+  "status": "active",
+  "adminIds": [
+    "202605160000000001"
+  ],
+  "players": [
+    {
+      "id": "202605160000000001",
+      "phone": "7327184414",
+      "firstName": "Kishore",
+      "lastName": "Pendyala"
+    },
+    {
+      "id": "202605160000000002",
+      "phone": "5106768424",
+      "firstName": "Srini",
+      "lastName": "Akula"
+    },
+    {
+      "id": "202605160000000003",
+      "phone": "4847166961",
+      "firstName": "Benarji",
+      "lastName": "Ganisetti"
+    },
+    {
+      "id": "202605160000000004",
+      "phone": "5512278409",
+      "firstName": "satyapal",
+      "lastName": "beeravelli"
+    },
+    {
+      "id": "202605160000000006",
+      "phone": "8482529939",
+      "firstName": "Satya",
+      "lastName": "D"
+    },
+    {
+      "id": "202605160000000005",
+      "phone": "7326668384",
+      "firstName": "Sandeep",
+      "lastName": "."
+    },
+    {
+      "id": "202605160000000010",
+      "phone": "7326683300",
+      "firstName": "Chandra",
+      "lastName": "Billanuka"
+    }
+  ],
+  "startDate": "2026-05-23",
+  "endDate": "2026-05-30",
+  "rules": {
+    "blockDurationDays": 7,
+    "playoffsWeeks": 1,
+    "minGamesPerBlock": 1,
+    "penaltyForNoGame": 1,
+    "scoring": {
+      "win": 3,
+      "loss": 0,
+      "noGame": -1
+    },
+    "scoringFormat": null,
+    "matchFormat": "adhoc",
+    "minMatchesPerWeek": 1,
+    "penaltyPerMissedWeek": 1,
+    "upsetBonus": 1,
+    "joinPolicy": "draft_only",
+    "newPlayerRankPolicy": "bottom",
+    "lateJoinCap": null,
+    "doublesMode": "adhoc"
+  },
+  "stackRanks": {
+    "202605160000000001": [
+      "202605160000000001",
+      "202605160000000002",
+      "202605160000000003",
+      "202605160000000004",
+      "202605160000000006",
+      "202605160000000005",
+      "202605160000000010"
+    ]
+  },
+  "finalRanking": [
+    "202605160000000006",
+    "202605160000000002",
+    "202605160000000003",
+    "202605160000000004",
+    "202605160000000001",
+    "202605160000000005",
+    "202605160000000010"
+  ],
+  "createdAt": "2026-05-23T13:16:23.881960",
+  "leagueType": "team",
+  "phase": "team_league",
+  "teams": [
+    {
+      "id": "t1_000001",
+      "name": "A",
+      "playerIds": [
+        "202605160000000001",
+        "202605160000000005"
+      ]
+    },
+    {
+      "id": "t2_000001",
+      "name": "B",
+      "playerIds": [
+        "202605160000000002",
+        "202605160000000006"
+      ]
+    },
+    {
+      "id": "t3_000001",
+      "name": "C",
+      "playerIds": [
+        "202605160000000003",
+        "202605160000000004"
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "f1_2_000001",
+      "round": 1,
+      "team1Id": "t2_000001",
+      "team2Id": "t3_000001",
+      "status": "completed",
+      "matchIds": [
+        "202605230000000003",
+        "202605230000000004",
+        "202605230000000005"
+      ],
+      "team1Points": 3,
+      "team2Points": 0,
+      "winnerId": "t2_000001"
+    },
+    {
+      "id": "f2_1_000001",
+      "round": 2,
+      "team1Id": "t1_000001",
+      "team2Id": "t3_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    },
+    {
+      "id": "f3_1_000001",
+      "round": 3,
+      "team1Id": "t1_000001",
+      "team2Id": "t2_000001",
+      "status": "pending",
+      "matchIds": [],
+      "team1Points": 0,
+      "team2Points": 0,
+      "winnerId": null
+    }
+  ],
+  "teamLeagueSettings": {
+    "singlesPerFixture": 1,
+    "doublesPerFixture": 1
+  }
+}

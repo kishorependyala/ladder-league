@@ -28,7 +28,8 @@
     "playoffGroup": null,
     "playoffMatchupId": null,
     "winner": "submitter",
-    "datePlayed": "2026-05-19"
+    "datePlayed": "2026-05-19",
+    "upsetBonus": 0
   },
   {
     "id": "202605190000000002",
@@ -59,6 +60,7 @@
     "playoffGroup": null,
     "playoffMatchupId": null,
     "winner": "submitter",
-    "datePlayed": "2026-05-19"
+    "datePlayed": "2026-05-19",
+    "upsetBonus": 0
   }
 ]
