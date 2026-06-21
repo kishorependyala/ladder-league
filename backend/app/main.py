@@ -1464,8 +1464,9 @@ def _tiebreak_params(rules: dict, sport: str) -> tuple[bool, int]:
 
 
 def _standings_sort_key(x: dict):
-    """Sort key implementing the ranking tiebreak order:
-    points → matches won → win% → sets won → sets win% → games won → games win%
+    """Sort key implementing the ranking fallback order:
+    points → win% → sets win% → games win%
+    (used when H2H cannot resolve a tie)
     """
     total_matches = x["wins"] + x["losses"]
     win_pct = x["wins"] / total_matches if total_matches > 0 else 0.0
@@ -1482,6 +1483,85 @@ def _standings_sort_key(x: dict):
         -x.get("games_won", 0),
         -games_win_pct,
     )
+
+
+def _resolve_h2h_group(group: list) -> list:
+    """Sort a group of same-points players using head-to-head, then stats.
+
+    Algorithm:
+    1. Count H2H wins each player has against the others IN THIS GROUP ONLY.
+    2. Sub-group by H2H win count.
+    3. Players in a unique H2H sub-group are marked 'h2h'.
+    4. Players in a tied H2H sub-group (circular or no matches played) are
+       sorted by stats and marked 'stats'.
+
+    Each player gets rankMethod ('h2h' | 'stats') and h2hWins set.
+    """
+    if len(group) <= 1:
+        for p in group:
+            p["rankMethod"] = "solo"
+            p["h2hWins"] = 0
+        return group
+
+    player_ids = {p["player"]["id"] for p in group}
+
+    # H2H wins within the group only
+    h2h_wins: dict = {}
+    for p in group:
+        pid = p["player"]["id"]
+        h2h_wins[pid] = sum(
+            1 for entry in p.get("matchLog", [])
+            if entry.get("result") == "win" and entry.get("opponentId") in player_ids
+        )
+
+    # Sub-group by H2H win count
+    sub_groups: dict = {}
+    for p in group:
+        count = h2h_wins[p["player"]["id"]]
+        sub_groups.setdefault(count, []).append(p)
+
+    multiple_h2h_buckets = len(sub_groups) > 1
+
+    result = []
+    for h2h_count in sorted(sub_groups.keys(), reverse=True):
+        sub = sub_groups[h2h_count]
+        if len(sub) == 1:
+            # This player's rank is uniquely determined by H2H
+            sub[0]["rankMethod"] = "h2h"
+            sub[0]["h2hWins"] = h2h_count
+            result.extend(sub)
+        else:
+            # Tied by H2H (circular or no head-to-head played) → stats fallback
+            for p in sub:
+                p["rankMethod"] = "stats" if not multiple_h2h_buckets else "stats"
+                p["h2hWins"] = h2h_count
+            result.extend(sorted(sub, key=_standings_sort_key))
+
+    return result
+
+
+def _sort_with_h2h(players: list) -> list:
+    """Sort standings rows applying H2H within same-points groups."""
+    # Sort by points first to identify groups
+    by_pts = sorted(players, key=lambda p: -p["points"])
+
+    result = []
+    i = 0
+    while i < len(by_pts):
+        pts = by_pts[i]["points"]
+        j = i
+        while j < len(by_pts) and by_pts[j]["points"] == pts:
+            j += 1
+        group = by_pts[i:j]
+        if len(group) == 1:
+            group[0]["rankMethod"] = "solo"
+            group[0]["h2hWins"] = 0
+            result.extend(group)
+        else:
+            result.extend(_resolve_h2h_group(group))
+        i = j
+
+    return result
 
 
 def _compute_adhoc_doubles_standings(lg: dict) -> dict:
@@ -1943,7 +2023,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                 "submittedAt": submitted_at,
             })
 
-    sorted_stats = sorted(stats.values(), key=_standings_sort_key)
+    sorted_stats = _sort_with_h2h(list(stats.values()))
     for i, s in enumerate(sorted_stats):
         s["rank"] = i + 1
     return sorted_stats

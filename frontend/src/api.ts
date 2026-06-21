@@ -217,6 +217,8 @@ export interface StandingsRow {
   games_won: number;
   games_lost: number;
   matchLog: MatchLogEntry[];
+  rankMethod?: 'h2h' | 'stats' | 'solo';
+  h2hWins?: number;
 }
 
 export interface StandingsResponse {

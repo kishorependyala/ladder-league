@@ -455,9 +455,22 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                   const winPct = totalM > 0 ? Math.round(row.wins / totalM * 100) : 0;
                   const setPct = totalS > 0 ? Math.round((row.sets_won ?? 0) / totalS * 100) : 0;
                   const gamePct = totalG > 0 ? Math.round((row.games_won ?? 0) / totalG * 100) : 0;
+                  const isH2H = row.rankMethod === 'h2h';
                   return (
                     <tr key={row.player.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
-                      <td style={tableCell}>{row.rank}</td>
+                      <td style={tableCell}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
+                          {row.rank}
+                          {isH2H && (
+                            <span
+                              title={`Ranked by head-to-head record (${row.h2hWins ?? 0} H2H win${(row.h2hWins ?? 0) !== 1 ? 's' : ''} among tied players)`}
+                              style={{ fontSize: '0.6rem', fontWeight: 700, background: '#dbeafe', color: '#1e40af', borderRadius: '99px', padding: '0.1rem 0.35rem', whiteSpace: 'nowrap', cursor: 'help' }}
+                            >
+                              H2H
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td style={{ ...tableCell, fontWeight: 700 }}>{row.player.firstName} {row.player.lastName}</td>
                       <td style={{ ...tableCell, color: '#6b7280' }}>{totalM}</td>
                       <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
@@ -479,6 +492,12 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 )}
               </tbody>
             </table>
+            {standings.some(r => r.rankMethod === 'h2h') && (
+              <p style={{ ...mutedText, fontSize: '0.75rem' }}>
+                <span style={{ fontWeight: 700, color: '#1e40af', background: '#dbeafe', borderRadius: '99px', padding: '0.1rem 0.4rem', fontSize: '0.65rem', marginRight: '0.4rem' }}>H2H</span>
+                Tied on points — ranked by head-to-head record. Circular ties fall back to win%, sets win%, games win%.
+              </p>
+            )}
           </div>
         )}
 
