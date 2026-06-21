@@ -611,9 +611,7 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
   const [leagueMode, setLeagueMode] = useState<'' | 'singles' | 'doubles_adhoc' | 'doubles_fixed' | 'team'>('');
   const [scoringWin, setScoringWin] = useState(3);
   const [scoringLoss, setScoringLoss] = useState(0);
-  const [scoringNoGame, setScoringNoGame] = useState(-1);
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(1);
-  const [upsetBonus, setUpsetBonus] = useState(1);
   const [joinPolicy, setJoinPolicy] = useState<'admin_only' | 'draft_only' | 'until_ranked' | 'until_complete'>('draft_only');
   const [rankPolicy, setRankPolicy] = useState<'bottom' | 'middle' | 'provisional' | 'admin_set'>('bottom');
   const [useLateJoinCap, setUseLateJoinCap] = useState(false);
@@ -646,9 +644,8 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       const rules = {
         matchFormat,
         doublesMode: doublesMode as 'none' | 'adhoc' | 'fixed_pairs',
-        scoring: { win: scoringWin, loss: scoringLoss, noGame: scoringNoGame },
+        scoring: { win: scoringWin, loss: scoringLoss },
         minMatchesPerWeek,
-        upsetBonus,
         joinPolicy,
         newPlayerRankPolicy: rankPolicy,
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
@@ -657,8 +654,8 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
       onCreated(res.league);
       setName(''); setSport(''); setStart(''); setEnd('');
       setMatchFormat('adhoc'); setLeagueMode('');
-      setScoringWin(3); setScoringLoss(0); setScoringNoGame(-1);
-      setMinMatchesPerWeek(1); setUpsetBonus(1);
+      setScoringWin(3); setScoringLoss(0);
+      setMinMatchesPerWeek(1);
       setJoinPolicy('draft_only'); setRankPolicy('bottom');
       setUseLateJoinCap(false);
     } catch (e) { onFail(e instanceof Error ? e.message : 'Could not create league.'); }
@@ -754,13 +751,12 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
 
         <SectionBox title="🏆 Scoring & rules">
           <div style={{ display: 'grid', gap: '0.35rem' }}>
-            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Points (Win / Loss / No-game)</label>
+            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Points (Win / Loss)</label>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {(['Win', 'Loss', 'No-game'] as const).map((lbl, i) => {
+              {(['Win', 'Loss'] as const).map((lbl, i) => {
                 const [val, setVal] = [
                   [scoringWin, setScoringWin],
                   [scoringLoss, setScoringLoss],
-                  [scoringNoGame, setScoringNoGame],
                 ][i] as [number, (n: number) => void];
                 return (
                   <label key={lbl} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
@@ -777,12 +773,6 @@ function CreateLeagueTab({ sports, sessionUser, onCreated, onFail }: CreateLeagu
             <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Min matches per week (default: 1)</label>
             <PillGroup value={String(minMatchesPerWeek) as any} onChange={(v: string) => setMinMatchesPerWeek(Number(v))}
               options={[1,2,3].map(n => ({ value: String(n) as any, label: String(n) }))} />
-          </div>
-          <div style={{ display: 'grid', gap: '0.35rem' }}>
-            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus pts (default: 1) — awarded when lower-ranked player wins</label>
-            <input type="number" min={0} max={10} value={upsetBonus}
-              onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
-              style={{ ...S.inp, width: 80 }} />
           </div>
         </SectionBox>
 

@@ -23,7 +23,6 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
 
   const winPts    = rules?.scoring?.win    ?? 3;
   const lossPts   = rules?.scoring?.loss   ?? 0;
-  const noGamePts = rules?.scoring?.noGame ?? -1;
 
   const joinLabels: Record<string, string> = {
     admin_only:     'Admin-only',
@@ -87,19 +86,16 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
     {
       heading: '🏅 Standings scoring',
       rows: [
-        { icon: '✅', label: 'Win',           value: `+${winPts} pts` },
-        { icon: '❌', label: 'Loss',          value: `${lossPts >= 0 ? '+' : ''}${lossPts} pts` },
-        { icon: '⏸️', label: 'No game',       value: `${noGamePts} pts` },
-        { icon: '🔥', label: 'Upset bonus',   value: `+${rules?.upsetBonus ?? 1} pts (lower rank beats higher)` },
+        { icon: '✅', label: 'Win',  value: `+${winPts} pts` },
+        { icon: '❌', label: 'Loss', value: `${lossPts >= 0 ? '+' : ''}${lossPts} pts` },
       ],
     },
     {
       heading: '📅 Schedule',
       rows: [
-        { icon: '📅', label: 'Min matches/week',    value: String(rules?.minMatchesPerWeek ?? 1) },
-        { icon: '⚠️', label: 'Missed week penalty', value: `${rules?.penaltyPerMissedWeek ?? 1} pts deducted` },
-        { icon: '🗓️', label: 'Round duration',      value: `${rules?.blockDurationDays ?? 7} days` },
-        { icon: '🏆', label: 'Playoffs',            value: `${rules?.playoffsWeeks ?? 1} week${(rules?.playoffsWeeks ?? 1) !== 1 ? 's' : ''}` },
+        { icon: '📅', label: 'Min matches/week', value: String(rules?.minMatchesPerWeek ?? 1) },
+        { icon: '🗓️', label: 'Round duration',   value: `${rules?.blockDurationDays ?? 7} days` },
+        { icon: '🏆', label: 'Playoffs',          value: `${rules?.playoffsWeeks ?? 1} week${(rules?.playoffsWeeks ?? 1) !== 1 ? 's' : ''}` },
       ],
     },
     {
@@ -126,9 +122,8 @@ export default function LeagueRulesSummary({ league, compact = false }: Props) {
       ]
     : [
         `Best of ${winsNeeded * 2 - 1} ${unitPlural}`,
-        `Win +${winPts} · Loss ${lossPts >= 0 ? '+' : ''}${lossPts} · No game ${noGamePts}`,
+        `Win +${winPts} · Loss ${lossPts >= 0 ? '+' : ''}${lossPts}`,
         `${rules?.minMatchesPerWeek ?? 1}+ match/wk`,
-        `Upset +${rules?.upsetBonus ?? 1}`,
       ];
 
   if (compact) {

@@ -45,17 +45,14 @@ export default function ScoreCalculator({ league }: Props) {
   const maxSets = cfg.max_units;
   const winsNeeded = cfg.wins_needed;
 
-  const winPts   = league.rules?.scoring?.win    ?? 3;
-  const lossPts  = league.rules?.scoring?.loss   ?? 0;
-  const noGamePts= league.rules?.scoring?.noGame ?? -1;
-  const upsetBonus = league.rules?.upsetBonus ?? 1;
+  const winPts   = league.rules?.scoring?.win  ?? 3;
+  const lossPts  = league.rules?.scoring?.loss ?? 0;
 
   const [nameA, setNameA] = useState('Player A');
   const [nameB, setNameB] = useState('Player B');
   const [sets, setSets] = useState<{ me: number; opp: number }[]>(
     Array.from({ length: maxSets }, () => ({ me: 0, opp: 0 }))
   );
-  const [isUpset, setIsUpset] = useState(false);
 
   const setScore = (i: number, side: 'me' | 'opp', val: string) => {
     const num = Math.max(0, parseInt(val, 10) || 0);
@@ -64,7 +61,6 @@ export default function ScoreCalculator({ league }: Props) {
 
   const reset = () => {
     setSets(Array.from({ length: maxSets }, () => ({ me: 0, opp: 0 })));
-    setIsUpset(false);
   };
 
   const setWinners = useMemo(() =>
@@ -86,10 +82,8 @@ export default function ScoreCalculator({ league }: Props) {
     return { meWins: me, oppWins: opp, matchWinner: winner, activeSets: active };
   }, [setWinners, winsNeeded]);
 
-  const aLeaguePts = matchWinner === 'me'  ? winPts  + (isUpset ? upsetBonus : 0)
-                   : matchWinner === 'opp' ? lossPts : null;
-  const bLeaguePts = matchWinner === 'opp' ? winPts  + (isUpset ? upsetBonus : 0)
-                   : matchWinner === 'me'  ? lossPts : null;
+  const aLeaguePts = matchWinner === 'me'  ? winPts  : matchWinner === 'opp' ? lossPts : null;
+  const bLeaguePts = matchWinner === 'opp' ? winPts  : matchWinner === 'me'  ? lossPts : null;
 
   const winnerName  = matchWinner === 'me' ? nameA : matchWinner === 'opp' ? nameB : null;
   const loserName   = matchWinner === 'me' ? nameB : matchWinner === 'opp' ? nameA : null;
@@ -113,7 +107,6 @@ export default function ScoreCalculator({ league }: Props) {
         · {cfg.win_by >= 2 ? `win by ${cfg.win_by}` : 'exact score'}
         {cfg.max_points ? ` · cap ${cfg.max_points}` : ''}
         · win earns {winPts} pts, loss earns {lossPts} pts
-        {upsetBonus > 0 ? ` · upset bonus +${upsetBonus}` : ''}
       </div>
 
       {/* Player names */}
@@ -223,26 +216,13 @@ export default function ScoreCalculator({ league }: Props) {
                   {pts >= 0 ? `+${pts}` : pts}
                 </div>
                 <div style={{ ...mutedText, fontSize: '0.76rem' }}>
-                  {won ? `${winPts} (win)${isUpset ? ` +${upsetBonus} (upset)` : ''}` : `${lossPts} (loss)`}
+                  {won ? `${winPts} (win)` : `${lossPts} (loss)`}
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Upset bonus toggle */}
-          {upsetBonus > 0 && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', justifyContent: 'center' }}>
-              <div
-                onClick={() => setIsUpset(v => !v)}
-                style={{ width: 36, height: 20, borderRadius: 99, background: isUpset ? '#f59e0b' : '#d1d5db', position: 'relative', flexShrink: 0, cursor: 'pointer', transition: 'background 0.2s' }}
-              >
-                <div style={{ position: 'absolute', top: 2, left: isUpset ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s' }} />
-              </div>
-              <span style={{ fontSize: '0.85rem', color: isUpset ? '#92400e' : '#6b7280' }}>
-                🔥 Upset win (lower-ranked beats higher-ranked) +{upsetBonus} bonus
-              </span>
-            </label>
-          )}
+          {/* (upset bonus removed) */}
         </div>
       ) : (
         <div style={{ background: '#f9fafb', borderRadius: '0.75rem', padding: '1rem', textAlign: 'center', border: '1px solid #e5e7eb' }}>
@@ -254,12 +234,7 @@ export default function ScoreCalculator({ league }: Props) {
         </div>
       )}
 
-      {/* No-game scenario */}
-      {noGamePts !== 0 && (
-        <div style={{ background: '#fef9c3', borderRadius: '0.65rem', padding: '0.65rem 1rem', fontSize: '0.82rem', color: '#854d0e', border: '1px solid #fde047' }}>
-          ⏸ If a match is not played: both players receive {noGamePts < 0 ? noGamePts : `+${noGamePts}`} pts (no-game penalty)
-        </div>
-      )}
+      {/* No-game scenario removed */}
 
       <button style={S.smallOutlineBtn} onClick={reset}>↺ Reset scores</button>
     </div>

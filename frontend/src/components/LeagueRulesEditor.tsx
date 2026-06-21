@@ -69,8 +69,6 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [maxCap, setMaxCap] = useState(saved?.max_points ?? sportDefault.max_points ?? 30);
   const [matchFormat, setMatchFormat] = useState<MatchScheduling>(league.rules?.matchFormat ?? 'adhoc');
   const [minMatchesPerWeek, setMinMatchesPerWeek] = useState(league.rules?.minMatchesPerWeek ?? 1);
-  const [penaltyPerMissedWeek, setPenaltyPerMissedWeek] = useState(league.rules?.penaltyPerMissedWeek ?? 1);
-  const [upsetBonus, setUpsetBonus] = useState(league.rules?.upsetBonus ?? 1);
   const [joinPolicy, setJoinPolicy] = useState<JoinPolicy>(() => resolveJoinPolicy(league.rules));
   const [rankPolicy, setRankPolicy] = useState<RankPolicy>(league.rules?.newPlayerRankPolicy ?? 'bottom');
   const [useLateJoinCap, setUseLateJoinCap] = useState(league.rules?.lateJoinCap != null);
@@ -81,7 +79,6 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   // League-point values
   const [winPts, setWinPts] = useState(league.rules?.scoring?.win ?? 3);
   const [lossPts, setLossPts] = useState(league.rules?.scoring?.loss ?? 0);
-  const [noGamePts, setNoGamePts] = useState(league.rules?.scoring?.noGame ?? -1);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -118,12 +115,10 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         scoringFormat: fmt,
         matchFormat,
         minMatchesPerWeek,
-        penaltyPerMissedWeek,
-        upsetBonus,
         joinPolicy,
         newPlayerRankPolicy: rankPolicy,
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
-        scoring: { win: winPts, loss: lossPts, noGame: noGamePts },
+        scoring: { win: winPts, loss: lossPts },
         doublesMode,
         lastSetIsTiebreak,
       });
@@ -148,12 +143,10 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         scoringFormat: null,
         matchFormat: 'adhoc',
         minMatchesPerWeek: 1,
-        penaltyPerMissedWeek: 1,
-        upsetBonus: 1,
         joinPolicy: 'draft_only',
         newPlayerRankPolicy: 'bottom',
         lateJoinCap: null,
-        scoring: { win: 3, loss: 0, noGame: -1 },
+        scoring: { win: 3, loss: 0 },
         doublesMode: 'none',
         lastSetIsTiebreak: false,
       });
@@ -167,14 +160,11 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         setMaxCap(sportDefault.max_points ?? 30);
         setMatchFormat('adhoc');
         setMinMatchesPerWeek(1);
-        setPenaltyPerMissedWeek(1);
-        setUpsetBonus(1);
         setJoinPolicy('draft_only');
         setRankPolicy('bottom');
         setUseLateJoinCap(false);
         setWinPts(3);
         setLossPts(0);
-        setNoGamePts(-1);
         setDoublesMode('none');
         setLastSetIsTiebreak(false);
         setSaved2(true);
@@ -226,33 +216,6 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
                 </button>
               ))}
             </div>
-          </div>
-
-          {minMatchesPerWeek > 0 && (
-            <div style={{ display: 'grid', gap: '0.35rem' }}>
-              <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Penalty per missed week (points deducted)</label>
-              <input
-                type="number"
-                min={0}
-                max={10}
-                value={penaltyPerMissedWeek}
-                onChange={e => setPenaltyPerMissedWeek(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
-                style={{ ...S.inp, width: 96 }}
-              />
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gap: '0.35rem' }}>
-            <label style={{ ...mutedText, fontSize: '0.82rem', fontWeight: 600 }}>Upset bonus</label>
-            <p style={{ ...mutedText, fontSize: '0.78rem' }}>Extra points awarded when a lower-ranked player beats a higher-ranked player</p>
-            <input
-              type="number"
-              min={0}
-              max={10}
-              value={upsetBonus}
-              onChange={e => setUpsetBonus(Math.max(0, Math.min(10, Number(e.target.value) || 0)))}
-              style={{ ...S.inp, width: 96 }}
-            />
           </div>
         </div>
       </Section>
@@ -356,11 +319,10 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
       {/* ── League Points ── */}
       <Section title="🏆 League points per match">
         <p style={{ ...mutedText, fontSize: '0.78rem', margin: 0 }}>Points awarded in the league standings for each match outcome.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem', maxWidth: 260 }}>
           {([
-            { label: '🏅 Win',       val: winPts,    set: setWinPts,    min: 0, max: 20 },
-            { label: '📉 Loss',      val: lossPts,   set: setLossPts,   min: -5, max: 10 },
-            { label: '⏸️ No-game',   val: noGamePts, set: setNoGamePts, min: -10, max: 0 },
+            { label: '🏅 Win',  val: winPts,  set: setWinPts,  min: 0, max: 20 },
+            { label: '📉 Loss', val: lossPts, set: setLossPts, min: -5, max: 10 },
           ] as { label: string; val: number; set: (n: number) => void; min: number; max: number }[]).map(({ label, val, set, min, max }) => (
             <div key={label} style={{ display: 'grid', gap: '0.3rem' }}>
               <label style={{ ...mutedText, fontSize: '0.8rem', fontWeight: 600 }}>{label}</label>
@@ -376,7 +338,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
           ))}
         </div>
         <p style={{ ...mutedText, fontSize: '0.75rem', marginTop: '0.1rem' }}>
-          Win: <strong>+{winPts}</strong> pts &nbsp;·&nbsp; Loss: <strong>{lossPts >= 0 ? '+' : ''}{lossPts}</strong> pts &nbsp;·&nbsp; No-game: <strong>{noGamePts}</strong> pts &nbsp;·&nbsp; Upset bonus: <strong>+{upsetBonus}</strong>
+          Win: <strong>+{winPts}</strong> pts &nbsp;·&nbsp; Loss: <strong>{lossPts >= 0 ? '+' : ''}{lossPts}</strong> pts
         </p>
       </Section>
 
@@ -521,8 +483,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         · {winBy === 'margin' ? `win by 2${useMaxCap ? ` (cap ${maxCap})` : ''}` : 'exact score'}
         · {matchFormat === 'adhoc' ? ' ad-hoc scheduling' : ' round-robin scheduling'}
         · {minMatchesPerWeek}/week minimum
-        · upset bonus {upsetBonus}
-        · <strong>W/L/NG: {winPts}/{lossPts}/{noGamePts}</strong>
+        · <strong>W/L: {winPts}/{lossPts}</strong>
         · join: {JOIN_POLICY_OPTIONS.find(o => o.value === joinPolicy)?.label ?? joinPolicy}
         {joinPolicy !== 'admin_only' && joinPolicy !== 'draft_only' && ` · new rank: ${RANK_POLICY_OPTIONS.find(o => o.value === rankPolicy)?.label ?? rankPolicy}`}
         {useLateJoinCap && ` · max ${lateJoinCap} late joiners`}

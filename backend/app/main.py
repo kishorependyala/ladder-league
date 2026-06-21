@@ -1051,13 +1051,7 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
                         opp_s = score.get("opponent", 0)
                         winner = sid if sub_s >= opp_s else oid
                 if winner:
-                    loser = oid if winner == sid else sid
-                    rules = {**default_rules(), **lg.get("rules", {})}
-                    ranking_positions = {pid: idx for idx, pid in enumerate(lg.get("finalRanking", []))}
-                    ws = ranking_positions.get(winner)
-                    ls = ranking_positions.get(loser)
-                    bonus = rules.get("upsetBonus", 0) if (ws is not None and ls is not None and ws > ls) else 0
-                    m["upsetBonus"] = bonus
+                    pass  # upset bonus removed
             _refresh_standings_ranking(lg)
             # Tag match with each player's rank from the last completed round
             rank_map = _get_last_round_ranks(lg)
@@ -1867,7 +1861,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": losing_ids[0] if losing_ids else None,
-                        "result": "win", "basePoints": win_pts, "upsetBonus": 0,
+                        "result": "win", "basePoints": win_pts,
                         "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
                     })
             for pid in losing_ids:
@@ -1881,7 +1875,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": winning_ids[0] if winning_ids else None,
-                        "result": "loss", "basePoints": loss_pts, "upsetBonus": 0,
+                        "result": "loss", "basePoints": loss_pts,
                         "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
                     })
             continue
@@ -1904,15 +1898,6 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
 
         win_pts = scoring.get("win", 3)
         loss_pts = scoring.get("loss", 0)
-        # Use stored upset bonus if present (stamped at match acceptance); otherwise recompute
-        if "upsetBonus" in m:
-            upset_bonus = m["upsetBonus"]
-        else:
-            upset_bonus = 0
-            winner_seed = ranking_positions.get(winner)
-            loser_seed = ranking_positions.get(loser)
-            if winner_seed is not None and loser_seed is not None and winner_seed > loser_seed:
-                upset_bonus = rules.get("upsetBonus", 0)
 
         submitted_at = m.get("submittedAt") or m.get("createdAt")
         raw_sets = m.get("score", {}).get("sets", [])
@@ -1921,7 +1906,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
         oid_sets, oid_games = _sets_games_for_team(raw_sets, for_team1=False, last_set_is_tiebreak=_lstb, max_units=_mu)
         if winner in stats:
             stats[winner]["wins"] += 1
-            stats[winner]["points"] += win_pts + upset_bonus
+            stats[winner]["points"] += win_pts
             w_sets = sid_sets if winner == sid else oid_sets
             w_games = sid_games if winner == sid else oid_games
             l_sets = oid_sets if winner == sid else sid_sets
@@ -1935,7 +1920,6 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                 "opponentId": loser,
                 "result": "win",
                 "basePoints": win_pts,
-                "upsetBonus": upset_bonus,
                 "score": m.get("score"),
                 "submittedAt": submitted_at,
             })
@@ -1955,7 +1939,6 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                 "opponentId": winner,
                 "result": "loss",
                 "basePoints": loss_pts,
-                "upsetBonus": 0,
                 "score": m.get("score"),
                 "submittedAt": submitted_at,
             })

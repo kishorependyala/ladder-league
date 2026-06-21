@@ -59,13 +59,10 @@ export interface LeagueRules {
   scoring: {
     win: number;
     loss: number;
-    noGame: number;
   };
   scoringFormat?: ScoringFormat | null;
   matchFormat: 'adhoc' | 'round-robin';
   minMatchesPerWeek: number;
-  penaltyPerMissedWeek: number;
-  upsetBonus: number;
   /** When true, the final set/game of a max-unit match is a match tiebreak — counts as 1 game (no set credit) */
   lastSetIsTiebreak?: boolean;
   /** Controls when players can self-join the league */
@@ -205,7 +202,6 @@ export interface MatchLogEntry {
   opponentId: string;
   result: 'win' | 'loss';
   basePoints: number;
-  upsetBonus: number;
   score?: MatchScore;
   submittedAt?: string;
 }

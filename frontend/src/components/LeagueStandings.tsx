@@ -637,7 +637,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                     {winnerId && (
                       <div style={{ ...S.infoBox, display: 'grid', gap: '0.25rem' }}>
                         <div><strong>Winner:</strong> {winnerName}{isTeamLeague && (winnerId === match.submitterId ? submitterTeam : opponentTeam) ? ` (${winnerId === match.submitterId ? submitterTeam : opponentTeam})` : ''}</div>
-                        {!isTeamLeague && <><div>{winnerName}: +{winnerLog?.basePoints ?? 0} pts{(winnerLog?.upsetBonus ?? 0) > 0 ? ` +${winnerLog?.upsetBonus ?? 0} upset bonus` : ''}</div><div>{loserName}: +{loserLog?.basePoints ?? 0} pts</div></>}
+                        {!isTeamLeague && <><div>{winnerName}: +{winnerLog?.basePoints ?? 0} pts</div><div>{loserName}: +{loserLog?.basePoints ?? 0} pts</div></>}
                       </div>
                     )}
 
