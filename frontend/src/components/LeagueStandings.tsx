@@ -442,7 +442,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr>
-                  {['Rank', 'Player', 'W', 'W%', 'Sets W', 'Sets W%', 'Games W', 'Games W%', 'Pts'].map(label => (
+                  {['Rank', 'Player', 'MP', 'W', 'W%', 'SP', 'Sets W', 'Sets W%', 'GP', 'Games W', 'Games W%', 'Pts'].map(label => (
                     <th key={label} style={tableHeadCell}>{label}</th>
                   ))}
                 </tr>
@@ -459,10 +459,13 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                     <tr key={row.player.id} style={{ background: row.rank % 2 === 0 ? '#fffbeb' : '#fff' }}>
                       <td style={tableCell}>{row.rank}</td>
                       <td style={{ ...tableCell, fontWeight: 700 }}>{row.player.firstName} {row.player.lastName}</td>
+                      <td style={{ ...tableCell, color: '#6b7280' }}>{totalM}</td>
                       <td style={{ ...tableCell, color: '#16a34a', fontWeight: 600 }}>{row.wins}</td>
                       <td style={tableCell}>{totalM > 0 ? `${winPct}%` : '—'}</td>
+                      <td style={{ ...tableCell, color: '#6b7280' }}>{totalS}</td>
                       <td style={tableCell}>{row.sets_won ?? 0}</td>
                       <td style={tableCell}>{totalS > 0 ? `${setPct}%` : '—'}</td>
+                      <td style={{ ...tableCell, color: '#6b7280' }}>{totalG}</td>
                       <td style={tableCell}>{row.games_won ?? 0}</td>
                       <td style={tableCell}>{totalG > 0 ? `${gamePct}%` : '—'}</td>
                       <td style={{ ...tableCell, color: '#d97706', fontWeight: 700 }}>{row.points}</td>
@@ -471,7 +474,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 })}
                 {!loading && standings.length === 0 && (
                   <tr>
-                    <td colSpan={9} style={{ ...tableCell, textAlign: 'center', color: '#9ca3af' }}>No standings yet.</td>
+                    <td colSpan={12} style={{ ...tableCell, textAlign: 'center', color: '#9ca3af' }}>No standings yet.</td>
                   </tr>
                 )}
               </tbody>

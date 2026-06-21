@@ -76,6 +76,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
   const [useLateJoinCap, setUseLateJoinCap] = useState(league.rules?.lateJoinCap != null);
   const [lateJoinCap, setLateJoinCap] = useState(league.rules?.lateJoinCap ?? 5);
   const [doublesMode, setDoublesMode] = useState<'none' | 'adhoc' | 'fixed_pairs'>(league.rules?.doublesMode ?? 'none');
+  const [lastSetIsTiebreak, setLastSetIsTiebreak] = useState(league.rules?.lastSetIsTiebreak ?? false);
 
   // League-point values
   const [winPts, setWinPts] = useState(league.rules?.scoring?.win ?? 3);
@@ -124,6 +125,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         lateJoinCap: useLateJoinCap ? lateJoinCap : null,
         scoring: { win: winPts, loss: lossPts, noGame: noGamePts },
         doublesMode,
+        lastSetIsTiebreak,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -153,6 +155,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         lateJoinCap: null,
         scoring: { win: 3, loss: 0, noGame: -1 },
         doublesMode: 'none',
+        lastSetIsTiebreak: false,
       });
       if (res.success) {
         onUpdated(res.league);
@@ -173,6 +176,7 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
         setLossPts(0);
         setNoGamePts(-1);
         setDoublesMode('none');
+        setLastSetIsTiebreak(false);
         setSaved2(true);
         setTimeout(() => setSaved2(false), 2500);
       } else {
@@ -278,6 +282,22 @@ export default function LeagueRulesEditor({ league, adminPhone, onUpdated }: Pro
           Match = {customWins} {customWins === 1 ? sportDefault.unit : sportDefault.unit_plural}
           &nbsp;(max {effectiveMaxUnits} {sportDefault.unit_plural} played)
         </p>
+        {effectiveMaxUnits > 1 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', userSelect: 'none', marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: lastSetIsTiebreak ? '#fef3c7' : '#f9fafb', border: `1.5px solid ${lastSetIsTiebreak ? '#fde68a' : '#e5e7eb'}`, borderRadius: '0.65rem' }}>
+            <input
+              type="checkbox"
+              checked={lastSetIsTiebreak}
+              onChange={e => setLastSetIsTiebreak(e.target.checked)}
+              style={{ width: 16, height: 16, accentColor: '#f59e0b' }}
+            />
+            <div>
+              <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#374151' }}>Last {sportDefault.unit.toLowerCase()} is a match tiebreak</span>
+              <p style={{ ...mutedText, fontSize: '0.78rem', margin: '0.1rem 0 0' }}>
+                When the match reaches {effectiveMaxUnits} {sportDefault.unit_plural.toLowerCase()}, the deciding {sportDefault.unit.toLowerCase()} counts as 1 game in stats — no set credit for either side.
+              </p>
+            </div>
+          </label>
+        )}
       </Section>
 
       <Section title={`Points per ${sportDefault.unit}`}>

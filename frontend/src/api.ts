@@ -66,6 +66,8 @@ export interface LeagueRules {
   minMatchesPerWeek: number;
   penaltyPerMissedWeek: number;
   upsetBonus: number;
+  /** When true, the final set/game of a max-unit match is a match tiebreak — counts as 1 game (no set credit) */
+  lastSetIsTiebreak?: boolean;
   /** Controls when players can self-join the league */
   joinPolicy: 'draft_only' | 'until_ranked' | 'until_complete' | 'admin_only';
   /** Where a late-joining player lands in the standings */
@@ -162,6 +164,7 @@ export interface MatchScore {
   submitter?: number;
   opponent?: number;
   details?: string;
+  duration?: number; // match duration in minutes (optional)
 }
 
 export interface Match {

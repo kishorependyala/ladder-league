@@ -661,4 +661,8 @@ def default_rules() -> dict:
         "newPlayerRankPolicy": "bottom",
         # lateJoinCap: max number of players who can join after draft (null = unlimited)
         "lateJoinCap": None,
+        # lastSetIsTiebreak: when True, the final set/game of a max-unit match is treated
+        # as a match tiebreak — it counts as exactly 1 game (winner) / 0 (loser) and does
+        # NOT contribute to sets_won / sets_lost.
+        "lastSetIsTiebreak": False,
     }

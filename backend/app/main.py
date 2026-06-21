@@ -1421,22 +1421,52 @@ def _resolve_winner_team(score: dict, sport: str, scoring_fmt) -> str:
     return "team1" if sub_score >= opp_score else "team2"
 
 
-def _sets_games_for_team(sets: list, for_team1: bool) -> tuple[int, int]:
-    """Return (sets_won, games_won) for team1 (submitter) or team2 (opponent)."""
+def _sets_games_for_team(
+    sets: list,
+    for_team1: bool,
+    last_set_is_tiebreak: bool = False,
+    max_units: int = 0,
+) -> tuple[int, int]:
+    """Return (sets_won, games_won) for team1 (submitter) or team2 (opponent).
+
+    When last_set_is_tiebreak is True and the match used all max_units, the final
+    set is a match tiebreak: it counts as 1 game for the winner and 0 for the loser,
+    and does NOT add to sets_won / sets_lost for either side.
+    """
     sets_won = 0
     games_won = 0
-    for s in sets:
+    n = len(sets)
+    match_used_tiebreak = last_set_is_tiebreak and max_units > 0 and n == max_units
+    for i, s in enumerate(sets):
         me = s.get("me", 0)
         opp = s.get("opp", 0)
+        is_tb = match_used_tiebreak and i == n - 1
         if for_team1:
-            games_won += me
-            if me > opp:
-                sets_won += 1
+            if is_tb:
+                games_won += 1 if me > opp else 0
+            else:
+                games_won += me
+                if me > opp:
+                    sets_won += 1
         else:
-            games_won += opp
-            if opp > me:
-                sets_won += 1
+            if is_tb:
+                games_won += 1 if opp > me else 0
+            else:
+                games_won += opp
+                if opp > me:
+                    sets_won += 1
     return sets_won, games_won
+
+
+def _tiebreak_params(rules: dict, sport: str) -> tuple[bool, int]:
+    """Return (last_set_is_tiebreak, max_units) from merged rules for a league."""
+    last_set_is_tiebreak = rules.get("lastSetIsTiebreak", False)
+    scoring_fmt = rules.get("scoringFormat")
+    if scoring_fmt and scoring_fmt.get("max_units"):
+        max_units = scoring_fmt["max_units"]
+    else:
+        max_units = SPORT_SCORING.get(sport, SPORT_SCORING["tennis"])["max_units"]
+    return last_set_is_tiebreak, max_units
 
 
 def _standings_sort_key(x: dict):
@@ -1494,8 +1524,9 @@ def _compute_adhoc_doubles_standings(lg: dict) -> dict:
         loss_pts = scoring.get("loss", 0)
         submitted_at = m.get("submittedAt") or m.get("createdAt")
 
-        t1_sets, t1_games = _sets_games_for_team(raw_sets, for_team1=True)
-        t2_sets, t2_games = _sets_games_for_team(raw_sets, for_team1=False)
+        _lstb, _mu = _tiebreak_params(rules, lg["sport"])
+        t1_sets, t1_games = _sets_games_for_team(raw_sets, for_team1=True, last_set_is_tiebreak=_lstb, max_units=_mu)
+        t2_sets, t2_games = _sets_games_for_team(raw_sets, for_team1=False, last_set_is_tiebreak=_lstb, max_units=_mu)
 
         for team_ids, opp_ids, is_winner, sw, gw, opp_sw, opp_gw in [
             (t1, t2, winner_team == "team1", t1_sets, t1_games, t2_sets, t2_games),
@@ -1591,8 +1622,9 @@ def _compute_doubles_standings(lg: dict) -> dict:
         loss_pts = scoring.get("loss", 0)
         submitted_at = m.get("submittedAt") or m.get("createdAt")
 
-        p1_sets, p1_games = _sets_games_for_team(raw_sets, for_team1=True)
-        p2_sets, p2_games = _sets_games_for_team(raw_sets, for_team1=False)
+        _lstb, _mu = _tiebreak_params(rules, lg["sport"])
+        p1_sets, p1_games = _sets_games_for_team(raw_sets, for_team1=True, last_set_is_tiebreak=_lstb, max_units=_mu)
+        p2_sets, p2_games = _sets_games_for_team(raw_sets, for_team1=False, last_set_is_tiebreak=_lstb, max_units=_mu)
 
         stats[p1_id]["sets_won"] += p1_sets
         stats[p1_id]["sets_lost"] += p2_sets
@@ -1821,8 +1853,9 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
             loss_pts = scoring.get("loss", 0)
             submitted_at = m.get("submittedAt") or m.get("createdAt")
             raw_sets = m.get("score", {}).get("sets", [])
-            win_sets, win_games = _sets_games_for_team(raw_sets, for_team1=(winner_team == "team1"))
-            loss_sets, loss_games = _sets_games_for_team(raw_sets, for_team1=(winner_team != "team1"))
+            _lstb, _mu = _tiebreak_params(rules, lg["sport"])
+            win_sets, win_games = _sets_games_for_team(raw_sets, for_team1=(winner_team == "team1"), last_set_is_tiebreak=_lstb, max_units=_mu)
+            loss_sets, loss_games = _sets_games_for_team(raw_sets, for_team1=(winner_team != "team1"), last_set_is_tiebreak=_lstb, max_units=_mu)
             for pid in winning_ids:
                 if pid in stats:
                     stats[pid]["wins"] += 1
@@ -1883,8 +1916,9 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
 
         submitted_at = m.get("submittedAt") or m.get("createdAt")
         raw_sets = m.get("score", {}).get("sets", [])
-        sid_sets, sid_games = _sets_games_for_team(raw_sets, for_team1=True)
-        oid_sets, oid_games = _sets_games_for_team(raw_sets, for_team1=False)
+        _lstb, _mu = _tiebreak_params(rules, lg["sport"])
+        sid_sets, sid_games = _sets_games_for_team(raw_sets, for_team1=True, last_set_is_tiebreak=_lstb, max_units=_mu)
+        oid_sets, oid_games = _sets_games_for_team(raw_sets, for_team1=False, last_set_is_tiebreak=_lstb, max_units=_mu)
         if winner in stats:
             stats[winner]["wins"] += 1
             stats[winner]["points"] += win_pts + upset_bonus

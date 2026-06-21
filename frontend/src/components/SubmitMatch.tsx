@@ -80,6 +80,7 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
   const [sets, setSets] = useState<Array<SetScore | null>>([null]);
   const [forceDone, setForceDone] = useState(false);
   const [notes, setNotes] = useState('');
+  const [duration, setDuration] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -131,6 +132,9 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
     }
   };
 
+  const lastSetIsTiebreak = Boolean(league.rules?.lastSetIsTiebreak);
+  const maxUnits = (league.rules?.scoringFormat?.max_units) ?? cfg.max_units;
+
   const opponentPlayer = opponents.find(player => player.id === opponentId);
   const subjectLabel = behalfMode ? getDisplayName(prePlayer1) : 'You';
   const opponentLabel = opponentPlayer ? getDisplayName(opponentPlayer) : behalfMode ? getDisplayName(prePlayer2) : 'Opp';
@@ -151,6 +155,7 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
         sets: completeSets,
         submitterWon: matchWinner === 'me',
         details: notes || undefined,
+        duration: duration ? Number(duration) : undefined,
       };
       const response = playoffInfo
         ? await submitPlayoffMatch({
@@ -211,7 +216,10 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
           return (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '4rem 1fr', gap: '0.5rem', alignItems: 'center' }}>
               <span style={{ ...mutedText, fontSize: '0.8rem', textAlign: 'right', paddingRight: '0.4rem' }}>
-                {cfg.unit} {i + 1}
+                {lastSetIsTiebreak && i === maxUnits - 1
+                  ? <span title="This is a match tiebreak — counts as 1 game">🎯 TB</span>
+                  : `${cfg.unit} ${i + 1}`
+                }
               </span>
               <select
                 value={score ? `${score.me}-${score.opp}` : ''}
@@ -266,12 +274,29 @@ function SubmitMatch({ league, user, prePlayer1, prePlayer2, playoffInfo, onSubm
             ? `Best of ${cfg.max_units} sets · win a set 6–0 to 6–4, 7–5, or 7–6`
             : `Best of ${cfg.max_units} ${cfg.unit_plural.toLowerCase()} · first to ${cfg.points_to_win} (win by ${cfg.win_by}${cfg.max_points ? `, max ${cfg.max_points}` : ''})`
           }
+          {lastSetIsTiebreak && ` · ${cfg.unit} ${maxUnits} is a match tiebreak (counts as 1 game, no set credit)`}
         </p>
       </div>
 
       <div style={S.fieldGroup}>
         <label style={S.label}>Notes (optional)</label>
         <textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Any additional details…" style={S.textarea} />
+      </div>
+
+      <div style={S.fieldGroup}>
+        <label style={S.label}>Match duration (optional)</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <input
+            type="number"
+            min={1}
+            max={600}
+            value={duration}
+            onChange={e => setDuration(e.target.value)}
+            placeholder="e.g. 75"
+            style={{ ...S.inp, width: 100 }}
+          />
+          <span style={{ ...mutedText, fontSize: '0.85rem' }}>minutes</span>
+        </div>
       </div>
 
       {error && <div style={S.errorBox}>{error}</div>}
