@@ -114,10 +114,10 @@ def _build_knockout4_group(name: str, seeded_ids: list[str], semis_minutes: int,
                             scheduled_date: str, start_time: str, round0_offset: int) -> dict:
     sf1_id, sf2_id, final_id, third_id = f"{name}-sf1", f"{name}-sf2", f"{name}-final", f"{name}-third"
     matchups = {
-        sf1_id: {"matchupId": sf1_id, "playerAId": seeded_ids[0], "playerBId": seeded_ids[2], "matchId": None, "winnerId": None},
-        sf2_id: {"matchupId": sf2_id, "playerAId": seeded_ids[1], "playerBId": seeded_ids[3], "matchId": None, "winnerId": None},
-        final_id: {"matchupId": final_id, "fromMatchups": [sf1_id, sf2_id], "side": "winners", "playerAId": None, "playerBId": None, "matchId": None, "winnerId": None},
-        third_id: {"matchupId": third_id, "fromMatchups": [sf1_id, sf2_id], "side": "losers", "playerAId": None, "playerBId": None, "matchId": None, "winnerId": None},
+        sf1_id: {"matchupId": sf1_id, "label": "Semifinal 1", "playerAId": seeded_ids[0], "playerBId": seeded_ids[2], "matchId": None, "winnerId": None},
+        sf2_id: {"matchupId": sf2_id, "label": "Semifinal 2", "playerAId": seeded_ids[1], "playerBId": seeded_ids[3], "matchId": None, "winnerId": None},
+        final_id: {"matchupId": final_id, "label": "Final", "pendingA": "Winner Semifinal 1", "pendingB": "Winner Semifinal 2", "fromMatchups": [sf1_id, sf2_id], "side": "winners", "playerAId": None, "playerBId": None, "matchId": None, "winnerId": None},
+        third_id: {"matchupId": third_id, "label": "3rd Place", "pendingA": "Loser Semifinal 1", "pendingB": "Loser Semifinal 2", "fromMatchups": [sf1_id, sf2_id], "side": "losers", "playerAId": None, "playerBId": None, "matchId": None, "winnerId": None},
     }
     rounds = [
         {

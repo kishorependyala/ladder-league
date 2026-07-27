@@ -880,6 +880,13 @@ def api_create_tournament(league_id: str, data: dict = Body(...)):
             "message": f"Tournament requires exactly 4, 5, 6, 8, or 12 players (got {len(player_ids)}).",
         }
 
+    # Seed selected players by their current active ladder ranking (best rank first),
+    # regardless of the order the admin picked them in, so group/bracket seeding matches
+    # who is actually performing best right now.
+    standings = _compute_league_standings(lg)
+    rank_by_pid = {s["player"]["id"]: s["rank"] for s in standings}
+    player_ids = sorted(player_ids, key=lambda pid: rank_by_pid.get(pid, 9999))
+
     scheduled_date = str(data.get("scheduledDate") or "")[:10]
     if not scheduled_date:
         return {"success": False, "message": "scheduledDate is required"}

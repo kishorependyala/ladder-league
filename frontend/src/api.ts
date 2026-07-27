@@ -109,6 +109,8 @@ export interface TournamentMatchup {
   matchId: string | null;
   winnerId: string | null;
   label?: string;
+  pendingA?: string;
+  pendingB?: string;
   fromGroupRank?: { group: string; rank: number }[];
 }
 
