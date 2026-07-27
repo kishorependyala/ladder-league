@@ -153,10 +153,14 @@ function AddScoreForm({ league, user, onAdded }: { league: League; user: User; o
     let winner: 'me' | 'opp' | null = null;
     if (me >= winsNeeded) winner = 'me';
     else if (opp >= winsNeeded) winner = 'opp';
+    // Fallback (mirrors the backend): if fewer sets/games than normally required
+    // were played but at least one is decided and one side won more, that's still
+    // treated as a match win — e.g. a single decisive set counts as a match won.
+    else if (active > 0 && me !== opp) winner = me > opp ? 'me' : 'opp';
     return { meWins: me, oppWins: opp, matchWinner: winner, activeSets: active };
   }, [setWinners, winsNeeded]);
 
-  const setsToShow = Math.min(maxSets, matchWinner ? activeSets : maxSets);
+  const setsToShow = Math.min(maxSets, matchWinner ? Math.max(activeSets, 1) : maxSets);
 
   const reset = () => {
     setPlayerAId(''); setPlayerBId('');
@@ -168,7 +172,7 @@ function AddScoreForm({ league, user, onAdded }: { league: League; user: User; o
     setError(''); setMessage('');
     if (!playerAId || !playerBId) { setError('Select both players.'); return; }
     if (playerAId === playerBId) { setError('Players must be different.'); return; }
-    if (!matchWinner) { setError(`Enter a decisive score (first to ${winsNeeded} ${cfg.unit.toLowerCase()}${winsNeeded !== 1 ? 's' : ''}).`); return; }
+    if (!matchWinner) { setError(`Enter at least one decisive ${cfg.unit.toLowerCase()} (or up to ${maxSets}, first to ${winsNeeded} wins the match).`); return; }
     setSubmitting(true);
     try {
       const decidedSets = sets.slice(0, activeSets);
@@ -238,7 +242,7 @@ function AddScoreForm({ league, user, onAdded }: { league: League; user: User; o
           );
         })}
         {maxSets > setsToShow && !matchWinner && (
-          <p style={{ ...mutedText, fontSize: '0.76rem', margin: 0 }}>Up to {maxSets} {cfg.unit.toLowerCase()}s allowed.</p>
+          <p style={{ ...mutedText, fontSize: '0.76rem', margin: 0 }}>A single decisive {cfg.unit.toLowerCase()} counts as a match win — up to {maxSets} {cfg.unit.toLowerCase()}s allowed.</p>
         )}
       </div>
 
