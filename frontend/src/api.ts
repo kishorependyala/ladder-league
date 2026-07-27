@@ -185,6 +185,7 @@ export interface Match {
   playoffGroup?: string | null;
   playoffMatchupId?: string | null;
   winner?: string;
+  upsetBonus?: number;
   // Doubles-specific fields
   matchType?: 'singles' | 'doubles';
   doublesMode?: 'adhoc' | 'fixed_pairs';
@@ -202,8 +203,17 @@ export interface MatchLogEntry {
   opponentId: string;
   result: 'win' | 'loss';
   basePoints: number;
+  upsetBonus?: number;
+  totalPoints?: number;
   score?: MatchScore;
   submittedAt?: string;
+}
+
+export interface WeeklyPenalty {
+  weekIndex: number;
+  startDate: string;
+  endDate: string;
+  amount: number;
 }
 
 export interface StandingsRow {
@@ -217,6 +227,7 @@ export interface StandingsRow {
   games_won: number;
   games_lost: number;
   matchLog: MatchLogEntry[];
+  penalties?: WeeklyPenalty[];
   rankMethod?: 'h2h' | 'stats' | 'solo';
   h2hWins?: number;
 }

@@ -1,0 +1,149 @@
+[
+  {
+    "id": "202606010000000001",
+    "leagueId": "badminton_202605200000000001",
+    "sport": "badminton",
+    "matchType": "doubles",
+    "team1PlayerIds": [
+      "202605170000000005",
+      "202605200000000007"
+    ],
+    "team2PlayerIds": [
+      "202605200000000006",
+      "202605200000000005"
+    ],
+    "submitterId": "202605170000000005",
+    "opponentId": null,
+    "adminSubmittedBy": "202605170000000005",
+    "requiresBothAccept": false,
+    "requiresAllAccept": false,
+    "acceptedPlayerIds": [
+      "202605170000000005",
+      "202605200000000007",
+      "202605200000000006",
+      "202605200000000005"
+    ],
+    "acceptedSides": [
+      "team1",
+      "team2"
+    ],
+    "score": {
+      "sets": [
+        {
+          "me": 16,
+          "opp": 21
+        },
+        {
+          "me": 18,
+          "opp": 21
+        }
+      ],
+      "submitterWon": false
+    },
+    "winnerTeam": "team2",
+    "status": "accepted",
+    "submittedAt": "2026-06-01T03:17:50.013192",
+    "resolvedAt": "2026-06-01T03:17:50.013192",
+    "fixtureId": "f1_3_000001",
+    "isPlayoff": false,
+    "datePlayed": "2026-06-01"
+  },
+  {
+    "id": "202606010000000002",
+    "leagueId": "badminton_202605200000000001",
+    "sport": "badminton",
+    "matchType": "doubles",
+    "team1PlayerIds": [
+      "202605210000000001",
+      "202605260000000001"
+    ],
+    "team2PlayerIds": [
+      "202605200000000004",
+      "202605200000000010"
+    ],
+    "submitterId": "202605210000000001",
+    "opponentId": null,
+    "adminSubmittedBy": "202605170000000005",
+    "requiresBothAccept": false,
+    "requiresAllAccept": false,
+    "acceptedPlayerIds": [
+      "202605210000000001",
+      "202605260000000001",
+      "202605200000000004",
+      "202605200000000010"
+    ],
+    "acceptedSides": [
+      "team1",
+      "team2"
+    ],
+    "score": {
+      "sets": [
+        {
+          "me": 21,
+          "opp": 18
+        },
+        {
+          "me": 21,
+          "opp": 16
+        }
+      ],
+      "submitterWon": true
+    },
+    "winnerTeam": "team1",
+    "status": "accepted",
+    "submittedAt": "2026-06-01T03:21:58.143339",
+    "resolvedAt": "2026-06-01T03:21:58.143339",
+    "fixtureId": "f5_1_000001",
+    "isPlayoff": false,
+    "datePlayed": "2026-06-01"
+  },
+  {
+    "id": "202606030000000001",
+    "leagueId": "badminton_202605200000000001",
+    "sport": "badminton",
+    "matchType": "doubles",
+    "team1PlayerIds": [
+      "202605200000000010",
+      "202605200000000004"
+    ],
+    "team2PlayerIds": [
+      "202605220000000002",
+      "202605200000000003"
+    ],
+    "submitterId": "202605200000000010",
+    "opponentId": null,
+    "adminSubmittedBy": "202605170000000005",
+    "requiresBothAccept": false,
+    "requiresAllAccept": false,
+    "acceptedPlayerIds": [
+      "202605200000000010",
+      "202605200000000004",
+      "202605220000000002",
+      "202605200000000003"
+    ],
+    "acceptedSides": [
+      "team1",
+      "team2"
+    ],
+    "score": {
+      "sets": [
+        {
+          "me": 19,
+          "opp": 21
+        },
+        {
+          "me": 12,
+          "opp": 21
+        }
+      ],
+      "submitterWon": false
+    },
+    "winnerTeam": "team2",
+    "status": "accepted",
+    "submittedAt": "2026-06-03T22:19:57.521752",
+    "resolvedAt": "2026-06-03T22:19:57.521752",
+    "fixtureId": "f1_2_000001",
+    "isPlayoff": false,
+    "datePlayed": "2026-06-03"
+  }
+]

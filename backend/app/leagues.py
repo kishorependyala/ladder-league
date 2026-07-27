@@ -76,7 +76,14 @@ def unit_winner(me: int, opp: int, sport: str, scoring_format: Optional[dict] = 
 
 
 def compute_match_winner(sets: list, sport: str, scoring_format: Optional[dict] = None) -> Optional[str]:
-    """Return 'submitter', 'opponent', or None from a list of {me, opp} dicts."""
+    """Return 'submitter', 'opponent', or None from a list of {me, opp} dicts.
+
+    Normally a side needs to win `wins_needed` sets/games to take the match. But
+    matches are sometimes reported with fewer completed units than that (e.g. a
+    single set played due to a retirement, weather, or a short/quick-play format).
+    In that case, whichever side won more of the completed units is still treated
+    as the match winner — a single decisive set/game counts as a match won.
+    """
     cfg = _resolve_scoring_cfg(sport, scoring_format)
     me_wins = opp_wins = 0
     for s in sets:
@@ -86,6 +93,8 @@ def compute_match_winner(sets: list, sport: str, scoring_format: Optional[dict] 
     wn = cfg["wins_needed"]
     if me_wins >= wn: return "submitter"
     if opp_wins >= wn: return "opponent"
+    if sets and me_wins != opp_wins:
+        return "submitter" if me_wins > opp_wins else "opponent"
     return None
 
 
@@ -107,9 +116,36 @@ def _league_path(sport: str, league_id: str) -> str:
     return os.path.join(_league_dir(sport, league_id), "league.json")
 
 
-def _matches_path(sport: str, league_id: str) -> str:
-    """All matches for a league in a single {leagueId}/matches.json array."""
+def _matches_dir(sport: str, league_id: str) -> str:
+    """Matches are stored per calendar month: {leagueId}/matches/{YYYY-MM}.json"""
+    return os.path.join(_league_dir(sport, league_id), "matches")
+
+
+def _matches_month_path(sport: str, league_id: str, year_month: str) -> str:
+    return os.path.join(_matches_dir(sport, league_id), f"{year_month}.json")
+
+
+def _legacy_matches_path(sport: str, league_id: str) -> str:
+    """Old single-file layout ({leagueId}/matches.json), kept only for one-time migration."""
     return os.path.join(_league_dir(sport, league_id), "matches.json")
+
+
+def _match_month_key(match: dict) -> str:
+    played = match.get("datePlayed") or (match.get("submittedAt") or match.get("createdAt") or "")[:10]
+    if len(played) >= 7:
+        return played[:7]
+    return datetime.now().strftime("%Y-%m")
+
+
+def _migrate_legacy_matches_if_needed(sport: str, league_id: str) -> None:
+    """One-time migration from the old single matches.json file to per-month files."""
+    legacy_path = _legacy_matches_path(sport, league_id)
+    if not os.path.exists(legacy_path):
+        return
+    with open(legacy_path) as f:
+        matches = json.load(f)
+    _save_matches_raw(sport, league_id, matches)
+    os.rename(legacy_path, legacy_path + ".migrated")
 
 
 def _availability_path(sport: str, league_id: str) -> str:
@@ -134,6 +170,28 @@ def load_league_rankings(sport: str, league_id: str) -> dict:
 def save_league_rankings(sport: str, league_id: str, data: dict) -> None:
     """Persist ranking snapshots to rankings.json."""
     path = _rankings_path(sport, league_id)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _weekly_rankings_path(sport: str, league_id: str) -> str:
+    """Weekly ranking snapshots (used for upset-bonus lookups) stored as
+    {leagueId}/weekly_rankings.json — a list of {weekEndDate, savedAt, rankings}."""
+    return os.path.join(_league_dir(sport, league_id), "weekly_rankings.json")
+
+
+def load_weekly_rankings(sport: str, league_id: str) -> list:
+    path = _weekly_rankings_path(sport, league_id)
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        data = json.load(f)
+    return data if isinstance(data, list) else []
+
+
+def save_weekly_rankings(sport: str, league_id: str, data: list) -> None:
+    path = _weekly_rankings_path(sport, league_id)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
@@ -274,18 +332,34 @@ def list_leagues(sport: Optional[str] = None) -> list:
 # ── Match CRUD ─────────────────────────────────────────────────────
 
 def _load_matches_raw(sport: str, league_id: str) -> list:
-    path = _matches_path(sport, league_id)
-    if not os.path.exists(path):
+    _migrate_legacy_matches_if_needed(sport, league_id)
+    mdir = _matches_dir(sport, league_id)
+    if not os.path.exists(mdir):
         return []
-    with open(path) as f:
-        return json.load(f)
+    matches = []
+    for fname in sorted(os.listdir(mdir)):
+        if not fname.endswith(".json"):
+            continue
+        with open(os.path.join(mdir, fname)) as f:
+            matches.extend(json.load(f))
+    return matches
 
 
 def _save_matches_raw(sport: str, league_id: str, matches: list):
-    path = _matches_path(sport, league_id)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
-        json.dump(matches, f, indent=2)
+    """Shard matches into one file per calendar month: {leagueId}/matches/{YYYY-MM}.json."""
+    mdir = _matches_dir(sport, league_id)
+    os.makedirs(mdir, exist_ok=True)
+    buckets: dict = {}
+    for m in matches:
+        buckets.setdefault(_match_month_key(m), []).append(m)
+    existing_files = {f for f in os.listdir(mdir) if f.endswith(".json")}
+    keep_files = {f"{k}.json" for k in buckets}
+    for stale in existing_files - keep_files:
+        os.remove(os.path.join(mdir, stale))
+    for k, ms in buckets.items():
+        ms.sort(key=lambda m: m.get("id", ""))
+        with open(_matches_month_path(sport, league_id, k), "w") as f:
+            json.dump(ms, f, indent=2)
 
 
 def save_match(match: dict):
@@ -402,7 +476,15 @@ def migrate_to_folder_layout(data_dir: str):
                 old_matches_dir = os.path.join(entry_path, "matches")
                 new_matches_path = os.path.join(entry_path, "matches.json")
 
-                if os.path.isdir(old_matches_dir) and not os.path.exists(new_matches_path):
+                # Only treat matches/ as the legacy per-match-file layout if its files
+                # are named after match IDs (all digits). The current layout shards
+                # matches into per-month files named "YYYY-MM.json" and must be left alone.
+                looks_legacy = os.path.isdir(old_matches_dir) and all(
+                    mfile[:-5].isdigit()
+                    for mfile in os.listdir(old_matches_dir)
+                    if mfile.endswith(".json")
+                )
+                if looks_legacy and not os.path.exists(new_matches_path):
                     matches = []
                     for mfile in sorted(os.listdir(old_matches_dir)):
                         if mfile.endswith(".json"):

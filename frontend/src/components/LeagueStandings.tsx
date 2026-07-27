@@ -768,8 +768,11 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           const playerMap: Record<string, string> = {};
           for (const p of players) playerMap[p.id] = `${p.firstName} ${p.lastName}`;
 
+          // Sort most-recent first. datePlayed only has day precision, so break ties
+          // using the full submittedAt timestamp.
+          const sortKey = (m: Match) => `${(m.datePlayed ?? (m.submittedAt ?? '').slice(0, 10))}T${(m.submittedAt ?? '').slice(11)}`;
           const displayedMatches = [...matches]
-            .sort((a, b) => (b.datePlayed ?? b.submittedAt ?? '').localeCompare(a.datePlayed ?? a.submittedAt ?? ''))
+            .sort((a, b) => sortKey(b).localeCompare(sortKey(a)))
             .filter(m => showRejected ? true : m.status !== 'rejected')
             .filter(m => matchFilter === 'all' ? true :
               m.submitterId === matchFilter || m.opponentId === matchFilter ||
@@ -786,6 +789,60 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
           };
 
           const statusColor = (s: string) => s === 'accepted' ? '#16a34a' : s === 'rejected' ? '#dc2626' : '#b45309';
+
+          const formatDateTime = (m: Match) => {
+            const iso = m.datePlayed ?? m.submittedAt;
+            if (!iso) return null;
+            const dateLabel = (m.datePlayed ?? iso.slice(0, 10));
+            const timeSource = m.submittedAt;
+            let timeLabel = '';
+            if (timeSource && timeSource.length > 10) {
+              const parsed = new Date(timeSource);
+              if (!isNaN(parsed.getTime())) {
+                timeLabel = ` · ${parsed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+              }
+            }
+            return `${dateLabel}${timeLabel}`;
+          };
+
+          // Perspective player used to color-code wins/losses and show missed-week penalties.
+          const perspectiveId = matchFilter !== 'all' ? matchFilter : user.id;
+          const perspectiveRow = standings.find(s => s.player.id === perspectiveId);
+          const perspectivePenalties = perspectiveId ? (perspectiveRow?.penalties ?? []) : [];
+
+          const resultForPerspective = (m: Match): 'win' | 'loss' | null => {
+            if (m.status !== 'accepted') return null;
+            const winnerId = resolveWinnerId(m);
+            const participantIds = m.matchType === 'doubles'
+              ? [...(m.team1PlayerIds ?? []), ...(m.team2PlayerIds ?? [])]
+              : [m.submitterId, m.opponentId];
+            if (!perspectiveId || !participantIds.includes(perspectiveId)) return null;
+            if (!winnerId) return null;
+            if (m.matchType === 'doubles') {
+              const winningTeam = (m.team1PlayerIds ?? []).includes(winnerId) ? m.team1PlayerIds : m.team2PlayerIds;
+              return (winningTeam ?? []).includes(perspectiveId) ? 'win' : 'loss';
+            }
+            return winnerId === perspectiveId ? 'win' : 'loss';
+          };
+
+          const cardColors = (result: 'win' | 'loss' | null) => {
+            if (result === 'win') return { border: '#86efac', background: '#f0fdf4' };
+            if (result === 'loss') return { border: '#fca5a5', background: '#fef2f2' };
+            return { border: '#fed7aa', background: '#fffbeb' };
+          };
+
+          // Only show missed-week penalties when a specific player is selected (not "All"),
+          // interleaved into the same chronological timeline as real matches.
+          type TimelineItem =
+            | { kind: 'match'; sortKey: string; match: Match }
+            | { kind: 'penalty'; sortKey: string; penalty: NonNullable<StandingsRow['penalties']>[number] };
+          const timeline: TimelineItem[] = displayedMatches.map(m => ({ kind: 'match', sortKey: sortKey(m), match: m }));
+          if (matchFilter !== 'all') {
+            for (const penalty of perspectivePenalties) {
+              timeline.push({ kind: 'penalty', sortKey: `${penalty.endDate}T23:59:59`, penalty });
+            }
+          }
+          timeline.sort((a, b) => b.sortKey.localeCompare(a.sortKey));
 
           return (
             <div style={{ display: 'grid', gap: '1rem' }}>
@@ -818,24 +875,67 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
                 ))}
               </div>
 
-              {displayedMatches.length === 0 ? (
+              {matchFilter !== 'all' && (
+                <p style={{ ...mutedText, fontSize: '0.78rem', margin: 0 }}>
+                  🟢 Win &nbsp; 🔴 Loss &nbsp; ⚠️ Missed-week penalty (starting Jul 26)
+                </p>
+              )}
+
+              {timeline.length === 0 ? (
                 <p style={mutedText}>No matches found.</p>
               ) : (
                 <div style={{ display: 'grid', gap: '0.6rem' }}>
-                  {displayedMatches.map(m => {
+                  {timeline.map(item => {
+                    if (item.kind === 'penalty') {
+                      const p = item.penalty;
+                      return (
+                        <div key={`penalty-${p.weekIndex}`} style={{ border: '1px solid #fca5a5', borderRadius: '0.9rem', padding: '0.9rem 1rem', background: '#fef2f2', display: 'grid', gap: '0.25rem' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            <strong style={{ color: '#991b1b', fontSize: '0.95rem' }}>⚠️ No match played this week</strong>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#dc2626' }}>−{p.amount} pt{p.amount !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div style={{ ...mutedText, fontSize: '0.82rem' }}>📅 {p.startDate} – {p.endDate}</div>
+                        </div>
+                      );
+                    }
+                    const m = item.match;
                     const winnerId = resolveWinnerId(m);
+                    const result = resultForPerspective(m);
+                    const colors = cardColors(result);
+                    const dateTimeLabel = formatDateTime(m);
+                    // Points breakdown for this match, from the perspective player's own
+                    // matchLog when available, else the winner's (so a breakdown still
+                    // shows up when the "All" filter is selected).
+                    const breakdownPlayerId = (perspectiveId && matchLogsByPlayer.get(perspectiveId)?.has(m.id))
+                      ? perspectiveId
+                      : winnerId;
+                    const breakdownLog = breakdownPlayerId ? matchLogsByPlayer.get(breakdownPlayerId)?.get(m.id) : undefined;
                     return (
-                      <div key={m.id} style={{ border: '1px solid #fed7aa', borderRadius: '0.9rem', padding: '0.9rem 1rem', background: '#fffbeb', display: 'grid', gap: '0.25rem' }}>
+                      <div key={m.id} style={{ border: `1px solid ${colors.border}`, borderRadius: '0.9rem', padding: '0.9rem 1rem', background: colors.background, display: 'grid', gap: '0.25rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.4rem' }}>
-                          <strong style={{ color: '#78350f', fontSize: '0.95rem' }}>{matchLabel(m)}</strong>
+                          <strong style={{ color: '#78350f', fontSize: '0.95rem' }}>
+                            {result === 'win' && '🟢 '}{result === 'loss' && '🔴 '}{matchLabel(m)}
+                          </strong>
                           <span style={{ fontSize: '0.75rem', fontWeight: 700, color: statusColor(m.status ?? '') }}>{m.status}</span>
                         </div>
                         <div style={{ ...mutedText, fontSize: '0.82rem', display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
-                          {(m.datePlayed ?? m.submittedAt) && <span>📅 {(m.datePlayed ?? m.submittedAt ?? '').slice(0, 10)}</span>}
+                          {dateTimeLabel && <span>📅 {dateTimeLabel}</span>}
                           {m.status !== 'pending' && <span>🎯 {formatScore(m)}</span>}
                           {winnerId && <span>🏆 {playerMap[winnerId] ?? 'Winner'}</span>}
+                          {!!m.upsetBonus && <span style={{ color: '#b91c1c' }}>🔥 Upset +{m.upsetBonus} pt{m.upsetBonus !== 1 ? 's' : ''}</span>}
                           {m.isPlayoff && <span style={{ color: '#6d28d9' }}>• Playoff</span>}
                         </div>
+                        {breakdownLog && (
+                          <div style={{ fontSize: '0.78rem', color: '#78350f', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <span>
+                              {breakdownPlayerId && playerMap[breakdownPlayerId] ? `${playerMap[breakdownPlayerId]}: ` : ''}
+                              {breakdownLog.basePoints} match pt{breakdownLog.basePoints !== 1 ? 's' : ''}
+                              {!!breakdownLog.upsetBonus && ` + ${breakdownLog.upsetBonus} upset bonus`}
+                              {' = '}
+                              <strong>{breakdownLog.totalPoints ?? (breakdownLog.basePoints + (breakdownLog.upsetBonus ?? 0))} pt{(breakdownLog.totalPoints ?? breakdownLog.basePoints) !== 1 ? 's' : ''}</strong>
+                            </span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

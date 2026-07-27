@@ -204,6 +204,7 @@ from app.leagues import (
     save_match, get_match, list_matches, delete_match, get_pending_matches_for_user,
     get_league_availability, save_player_availability,
     load_league_rankings, save_league_rankings,
+    load_weekly_rankings, save_weekly_rankings,
     is_super_admin, add_super_admin, load_superadmin_phones,
     compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
     default_rules, compute_match_winner, generate_playoffs,
@@ -1034,24 +1035,44 @@ def api_accept_match(match_id: str, data: dict = Body(...)):
         save_match(m)
         if m.get("status") == "accepted":
             _sync_playoff_match_result(lg, m)
-            # Compute and store upset bonus using ranking BEFORE this match changes standings
+            # Compute and store upset bonus using LAST WEEK's ranking snapshot (not the
+            # live/current ranking). Only matches played on/after UPSET_BONUS_START_DATE
+            # earn a bonus: max(1, rankGap // 2) where rankGap is how many spots below
+            # the loser the winner was ranked.
             if not m.get("isPlayoff") and m.get("matchType") != "doubles":
-                sid = m.get("submitterId")
-                oid = m.get("opponentId")
-                winner = _match_winner_player_id(m)
-                if not winner:
-                    score = m.get("score", {})
-                    sets = score.get("sets", [])
-                    if sets:
-                        scoring_fmt = {**default_rules(), **lg.get("rules", {})}.get("scoringFormat")
-                        computed = compute_match_winner(sets, lg["sport"], scoring_fmt)
-                        winner = sid if computed == "submitter" else oid
-                    else:
-                        sub_s = score.get("submitter", 0)
-                        opp_s = score.get("opponent", 0)
-                        winner = sid if sub_s >= opp_s else oid
-                if winner:
-                    pass  # upset bonus removed
+                match_date = m.get("datePlayed") or (m.get("submittedAt") or "")[:10]
+                rules = {**default_rules(), **lg.get("rules", {})}
+                if rules.get("upsetBonus") and match_date >= UPSET_BONUS_START_DATE:
+                    sid = m.get("submitterId")
+                    oid = m.get("opponentId")
+                    winner = _match_winner_player_id(m)
+                    if not winner:
+                        score = m.get("score", {})
+                        sets = score.get("sets", [])
+                        if sets:
+                            scoring_fmt = rules.get("scoringFormat")
+                            computed = compute_match_winner(sets, lg["sport"], scoring_fmt)
+                            if computed == "submitter":
+                                winner = sid
+                            elif computed == "opponent":
+                                winner = oid
+                        else:
+                            sub_s = score.get("submitter", 0)
+                            opp_s = score.get("opponent", 0)
+                            if sub_s != opp_s:
+                                winner = sid if sub_s > opp_s else oid
+                    if winner:
+                        loser = oid if winner == sid else sid
+                        try:
+                            match_date_obj = date.fromisoformat(match_date[:10])
+                        except ValueError:
+                            match_date_obj = None
+                        if match_date_obj:
+                            rank_map = _get_last_week_rankings(lg, match_date_obj)
+                            bonus = _upset_bonus_points(rules, rank_map.get(winner), rank_map.get(loser))
+                            if bonus:
+                                m["upsetBonus"] = bonus
+                                save_match(m)
             _refresh_standings_ranking(lg)
             # Tag match with each player's rank from the last completed round
             rank_map = _get_last_round_ranks(lg)
@@ -1882,22 +1903,141 @@ def api_league_playoffs(league_id: str):
     return lg.get("playoffs") or {"groups": []}
 
 
+# Upset bonuses and missed-week penalties only apply to activity from this date
+# onward — matches/weeks before it are unaffected so historical standings don't shift.
+UPSET_BONUS_START_DATE = "2026-07-26"
+MISSED_WEEK_PENALTY_START_DATE = date(2026, 7, 26)
+
+
+def _missed_week_penalties(lg: dict, matches: list, rules: dict, upto_date: Optional[date] = None) -> dict:
+    """Return {playerId: [{weekIndex, startDate, endDate, amount}]} for weeks (starting
+    MISSED_WEEK_PENALTY_START_DATE, 7-day blocks) a player didn't record any accepted
+    match. Consecutive missed weeks escalate: 1st missed week = -1, 2nd = -2, 3rd = -3, ...
+    and the streak resets to 0 as soon as the player plays a match in a week."""
+    penalty_per_week = rules.get("penaltyPerMissedWeek", 1)
+    if not penalty_per_week:
+        return {}
+
+    today = upto_date or date.today()
+    if today < MISSED_WEEK_PENALTY_START_DATE:
+        return {}
+    completed_weeks = (today - MISSED_WEEK_PENALTY_START_DATE).days // 7  # only fully elapsed weeks
+
+    # Which weeks (by index) did each player play at least one accepted match in?
+    played_weeks: dict = {}
+    for m in matches:
+        if m.get("status") != "accepted" or m.get("isPlayoff"):
+            continue
+        played = (m.get("datePlayed") or (m.get("submittedAt") or "")[:10])
+        if not played or played < MISSED_WEEK_PENALTY_START_DATE.isoformat():
+            continue
+        try:
+            played_date = date.fromisoformat(played[:10])
+        except ValueError:
+            continue
+        week_idx = (played_date - MISSED_WEEK_PENALTY_START_DATE).days // 7
+        participant_ids = (
+            m.get("team1PlayerIds", []) + m.get("team2PlayerIds", [])
+            if m.get("matchType") == "doubles"
+            else [m.get("submitterId"), m.get("opponentId")]
+        )
+        for pid in participant_ids:
+            if pid:
+                played_weeks.setdefault(pid, set()).add(week_idx)
+
+    penalties: dict = {}
+    for p in lg.get("players", []):
+        pid = p["id"]
+        streak = 0
+        player_penalties = []
+        for week_idx in range(0, completed_weeks):
+            if week_idx in played_weeks.get(pid, set()):
+                streak = 0
+                continue
+            streak += 1
+            amount = streak * penalty_per_week
+            start = MISSED_WEEK_PENALTY_START_DATE + timedelta(days=week_idx * 7)
+            end = start + timedelta(days=6)
+            player_penalties.append({
+                "weekIndex": week_idx,
+                "startDate": start.isoformat(),
+                "endDate": end.isoformat(),
+                "amount": amount,
+            })
+        if player_penalties:
+            penalties[pid] = player_penalties
+    return penalties
+
+
+def _week_index_since(d: date, start: date) -> int:
+    return (d - start).days // 7
+
+
+def _week_end_for_index(start: date, idx: int) -> date:
+    return start + timedelta(days=idx * 7 + 6)
+
+
+def _get_last_week_rankings(lg: dict, before_date: date) -> dict:
+    """Return {playerId: rank} (1-indexed, 1 = best) as of the end of the week
+    immediately preceding `before_date`. The weekly snapshot is loaded from
+    weekly_rankings.json, computed and cached there if missing. Weeks are anchored
+    to MISSED_WEEK_PENALTY_START_DATE (2026-07-26) in 7-day blocks. If no full week
+    has completed yet, falls back to the league's initial seed ranking."""
+    if before_date < MISSED_WEEK_PENALTY_START_DATE:
+        return {}
+    week_idx = _week_index_since(before_date, MISSED_WEEK_PENALTY_START_DATE)
+    last_week_idx = week_idx - 1
+    if last_week_idx < 0:
+        rdata = load_league_rankings(lg["sport"], lg["id"])
+        initial = rdata.get("initial")
+        if initial:
+            return {r["playerId"]: r["rank"] for r in initial["rankings"]}
+        return {pid: idx + 1 for idx, pid in enumerate(lg.get("finalRanking", []))}
+
+    week_end = _week_end_for_index(MISSED_WEEK_PENALTY_START_DATE, last_week_idx)
+    weekly = load_weekly_rankings(lg["sport"], lg["id"])
+    entry = next((w for w in weekly if w.get("weekEndDate") == week_end.isoformat()), None)
+    if entry is None:
+        snapshot = _snapshot_rankings(lg, cutoff_date=week_end.isoformat())
+        entry = {"weekEndDate": week_end.isoformat(), "savedAt": datetime.now().isoformat(), "rankings": snapshot}
+        weekly.append(entry)
+        weekly.sort(key=lambda w: w["weekEndDate"])
+        save_weekly_rankings(lg["sport"], lg["id"], weekly)
+    return {r["playerId"]: r["rank"] for r in entry["rankings"]}
+
+
+def _upset_bonus_points(rules: dict, winner_rank: Optional[int], loser_rank: Optional[int]) -> int:
+    """Upset bonus = half the rank gap between winner and loser (minimum 1 point),
+    only when the winner was ranked worse (higher rank number) than the loser."""
+    if not rules.get("upsetBonus"):
+        return 0
+    if winner_rank is None or loser_rank is None or winner_rank <= loser_rank:
+        return 0
+    diff = winner_rank - loser_rank
+    return max(1, diff // 2)
+
+
 def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
     matches = list_matches(lg["sport"], lg["id"])
     if cutoff_date:
         matches = [m for m in matches if (m.get("datePlayed") or "") <= cutoff_date]
     rules = {**default_rules(), **lg.get("rules", {})}
     scoring = rules.get("scoring", {"win": 3, "loss": 0, "noGame": -1})
-    final_ranking = lg.get("finalRanking", [])
-    ranking_positions = {player_id: index for index, player_id in enumerate(final_ranking)}
+    last_week_cache: dict = {}
+
+    def last_week_ranks(before_date: date) -> dict:
+        if before_date not in last_week_cache:
+            last_week_cache[before_date] = _get_last_week_rankings(lg, before_date)
+        return last_week_cache[before_date]
 
     stats: dict = {}
     for p in lg["players"]:
         stats[p["id"]] = {
             "player": p, "wins": 0, "losses": 0, "points": 0, "rank": 0,
             "sets_won": 0, "sets_lost": 0, "games_won": 0, "games_lost": 0,
-            "matchLog": [],
+            "matchLog": [], "penalties": [],
         }
+
 
     for m in matches:
         if m.get("status") != "accepted" or m.get("isPlayoff"):
@@ -1941,7 +2081,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": losing_ids[0] if losing_ids else None,
-                        "result": "win", "basePoints": win_pts,
+                        "result": "win", "basePoints": win_pts, "upsetBonus": 0, "totalPoints": win_pts,
                         "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
                     })
             for pid in losing_ids:
@@ -1955,7 +2095,7 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                     stats[pid]["matchLog"].append({
                         "matchId": m["id"],
                         "opponentId": winning_ids[0] if winning_ids else None,
-                        "result": "loss", "basePoints": loss_pts,
+                        "result": "loss", "basePoints": loss_pts, "upsetBonus": 0, "totalPoints": loss_pts,
                         "score": m.get("score"), "submittedAt": submitted_at, "matchType": "doubles",
                     })
             continue
@@ -1969,11 +2109,21 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
             if sets:
                 scoring_fmt = rules.get("scoringFormat")
                 computed_winner = compute_match_winner(sets, lg["sport"], scoring_fmt)
-                winner = sid if computed_winner == "submitter" else oid
+                if computed_winner == "submitter":
+                    winner = sid
+                elif computed_winner == "opponent":
+                    winner = oid
+                else:
+                    winner = None
             else:
                 sub_score = score.get("submitter", 0)
                 opp_score = score.get("opponent", 0)
-                winner = sid if sub_score >= opp_score else oid
+                if sub_score != opp_score:
+                    winner = sid if sub_score > opp_score else oid
+        if not winner:
+            # No decisive result can be determined for this match — exclude it
+            # from standings rather than guessing a winner.
+            continue
         loser = oid if winner == sid else sid
 
         win_pts = scoring.get("win", 3)
@@ -1984,9 +2134,23 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
         _lstb, _mu = _tiebreak_params(rules, lg["sport"])
         sid_sets, sid_games = _sets_games_for_team(raw_sets, for_team1=True, last_set_is_tiebreak=_lstb, max_units=_mu)
         oid_sets, oid_games = _sets_games_for_team(raw_sets, for_team1=False, last_set_is_tiebreak=_lstb, max_units=_mu)
+
+        # Upset bonus: winner ranked lower (worse) than loser as of last week's
+        # ranking snapshot, only counted for matches played on/after UPSET_BONUS_START_DATE.
+        match_date = m.get("datePlayed") or (submitted_at or "")[:10]
+        upset_bonus = 0
+        if match_date >= UPSET_BONUS_START_DATE:
+            try:
+                match_date_obj = date.fromisoformat(match_date[:10])
+            except ValueError:
+                match_date_obj = None
+            if match_date_obj:
+                rank_map = last_week_ranks(match_date_obj)
+                upset_bonus = _upset_bonus_points(rules, rank_map.get(winner), rank_map.get(loser))
+
         if winner in stats:
             stats[winner]["wins"] += 1
-            stats[winner]["points"] += win_pts
+            stats[winner]["points"] += win_pts + upset_bonus
             w_sets = sid_sets if winner == sid else oid_sets
             w_games = sid_games if winner == sid else oid_games
             l_sets = oid_sets if winner == sid else sid_sets
@@ -2000,6 +2164,8 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                 "opponentId": loser,
                 "result": "win",
                 "basePoints": win_pts,
+                "upsetBonus": upset_bonus,
+                "totalPoints": win_pts + upset_bonus,
                 "score": m.get("score"),
                 "submittedAt": submitted_at,
             })
@@ -2019,9 +2185,19 @@ def _compute_league_standings(lg: dict, cutoff_date: str = None) -> list[dict]:
                 "opponentId": winner,
                 "result": "loss",
                 "basePoints": loss_pts,
+                "upsetBonus": 0,
+                "totalPoints": loss_pts,
                 "score": m.get("score"),
                 "submittedAt": submitted_at,
             })
+
+    # Missed-week penalties (only weeks on/after MISSED_WEEK_PENALTY_START_DATE)
+    upto = date.fromisoformat(cutoff_date) if cutoff_date else None
+    penalties_by_player = _missed_week_penalties(lg, matches, rules, upto_date=upto)
+    for pid, player_penalties in penalties_by_player.items():
+        if pid in stats:
+            stats[pid]["penalties"] = player_penalties
+            stats[pid]["points"] -= sum(p["amount"] for p in player_penalties)
 
     sorted_stats = _sort_with_h2h(list(stats.values()))
     for i, s in enumerate(sorted_stats):
@@ -2690,9 +2866,12 @@ def api_fix_player_ids(data: dict = Body(...)):
 
 @app.post("/api/admin/maintenance/fix-upset-bonus")
 def api_fix_upset_bonus(data: dict = Body(...)):
-    """Recompute and persist upset bonuses for all existing matches using each league's
-    initial seed ranking. Also backfills the initial ranking snapshot in rankings.json
-    for leagues that were started before snapshot support was added."""
+    """Retro-fix upset bonuses for every match on/after UPSET_BONUS_START_DATE using each
+    match's LAST WEEK's ranking snapshot (not the live ranking). Rebuilds weekly_rankings.json
+    from scratch so stale caches don't linger, then recomputes bonus = max(1, rankGap // 2)
+    for each eligible match (rankGap = winner's rank − loser's rank in last week's snapshot).
+    Also backfills the initial ranking snapshot in rankings.json for leagues that were
+    started before snapshot support was added (used as the seed for the very first week)."""
     phone = data.get("phone")
     if not is_super_admin(phone):
         return {"success": False, "message": "Not authorized"}
@@ -2704,12 +2883,10 @@ def api_fix_upset_bonus(data: dict = Body(...)):
             continue
 
         rdata = load_league_rankings(lg["sport"], lg["id"])
-        initial_saved = False
         initial_rankings_saved = False
 
         # ── Backfill initial ranking snapshot if missing ──────────────
         if not rdata.get("initial"):
-            # Recompute from stackRanks (user votes) if available
             if lg.get("stackRanks"):
                 initial_player_ids = compute_final_ranking(lg)
             else:
@@ -2718,27 +2895,26 @@ def api_fix_upset_bonus(data: dict = Body(...)):
                 "savedAt": datetime.now().isoformat(),
                 "rankings": [{"playerId": pid, "rank": idx + 1} for idx, pid in enumerate(initial_player_ids)],
             }
-            if not rdata.get("rounds"):
-                rdata["rounds"] = []
+            rdata.setdefault("rounds", [])
             save_league_rankings(lg["sport"], lg["id"], rdata)
-            initial_saved = True
             initial_rankings_saved = True
 
-        # Use the saved initial ranking as seed for upset bonus calculation
-        seed = [r["playerId"] for r in sorted(rdata["initial"]["rankings"], key=lambda r: r["rank"])]
-        ranking_positions = {pid: idx for idx, pid in enumerate(seed)}
-
         rules = {**default_rules(), **lg.get("rules", {})}
-        bonus_value = rules.get("upsetBonus", 0)
+
+        # Rebuild weekly ranking snapshots from scratch (cheap — recomputed lazily on demand).
+        save_weekly_rankings(lg["sport"], lg["id"], [])
 
         matches = list_matches(lg["sport"], lg["id"])
         matches_fixed = 0
-        if bonus_value:
-            for m in matches:
-                if m.get("status") != "accepted" or m.get("isPlayoff") or m.get("matchType") == "doubles":
-                    continue
-                if "upsetBonus" in m:
-                    continue  # already stamped — skip
+        eligible = sorted(
+            (m for m in matches if m.get("status") == "accepted" and not m.get("isPlayoff") and m.get("matchType") != "doubles"),
+            key=lambda m: m.get("datePlayed") or (m.get("submittedAt") or ""),
+        )
+        for m in eligible:
+            match_date = m.get("datePlayed") or (m.get("submittedAt") or "")[:10]
+            old_bonus = m.get("upsetBonus", 0)
+            new_bonus = 0
+            if rules.get("upsetBonus") and match_date >= UPSET_BONUS_START_DATE:
                 sid = m.get("submitterId")
                 oid = m.get("opponentId")
                 winner = _match_winner_player_id(m)
@@ -2747,19 +2923,32 @@ def api_fix_upset_bonus(data: dict = Body(...)):
                     sets = score.get("sets", [])
                     if sets:
                         computed = compute_match_winner(sets, lg["sport"], rules.get("scoringFormat"))
-                        winner = sid if computed == "submitter" else oid
+                        if computed == "submitter":
+                            winner = sid
+                        elif computed == "opponent":
+                            winner = oid
                     else:
-                        winner = sid if score.get("submitter", 0) >= score.get("opponent", 0) else oid
-                if not winner:
-                    continue
-                loser = oid if winner == sid else sid
-                ws = ranking_positions.get(winner)
-                ls = ranking_positions.get(loser)
-                m["upsetBonus"] = bonus_value if (ws is not None and ls is not None and ws > ls) else 0
+                        sub_s = score.get("submitter", 0)
+                        opp_s = score.get("opponent", 0)
+                        if sub_s != opp_s:
+                            winner = sid if sub_s > opp_s else oid
+                if winner:
+                    loser = oid if winner == sid else sid
+                    try:
+                        match_date_obj = date.fromisoformat(match_date[:10])
+                    except ValueError:
+                        match_date_obj = None
+                    if match_date_obj:
+                        rank_map = _get_last_week_rankings(lg, match_date_obj)
+                        new_bonus = _upset_bonus_points(rules, rank_map.get(winner), rank_map.get(loser))
+            if new_bonus != old_bonus:
+                m["upsetBonus"] = new_bonus
                 save_match(m)
                 matches_fixed += 1
 
-        if initial_saved or matches_fixed > 0:
+        _refresh_standings_ranking(lg)
+
+        if initial_rankings_saved or matches_fixed > 0:
             fixed_leagues.append({
                 "leagueId": lg["id"],
                 "leagueName": lg.get("name", lg["id"]),
