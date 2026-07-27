@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { acceptMatch, addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, rejectMatch, recalculateRanking, recalculateStandings, removePlayer, renameLeague, reopenRanking, SPORT_SCORING, startLeague, startPlayoffs, startRanking, submitMatch, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
+import TournamentPanel from './TournamentPanel';
 
 const API_BASE = 'http://localhost:8080';
 
@@ -759,7 +760,7 @@ function LeagueCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule' | 'matches'>('players');
+  const [activeTab, setActiveTab] = useState<'players' | 'rules' | 'schedule' | 'matches' | 'tournament'>('players');
   const [copied, setCopied] = useState(false);
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [pinPlayer, setPinPlayer] = useState<Player | null>(null);
@@ -1115,7 +1116,7 @@ function LeagueCard({
 
       {/* tabs */}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #fde68a' }}>
-        {(['players', 'rules', 'schedule', 'matches'] as const).map(t => (
+        {(['players', 'rules', 'schedule', 'matches', 'tournament'] as const).map(t => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
@@ -1131,7 +1132,7 @@ function LeagueCard({
               cursor: 'pointer',
             }}
           >
-            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : t === 'schedule' ? '📅 Rounds' : '🎾 Matches'}
+            {t === 'players' ? `👥 Players (${league.players.length})` : t === 'rules' ? '📋 League Rules' : t === 'schedule' ? '📅 Rounds' : t === 'matches' ? '🎾 Matches' : '🏆 Tournament'}
           </button>
         ))}
       </div>
@@ -1249,6 +1250,11 @@ function LeagueCard({
       {/* Matches tab */}
       {activeTab === 'matches' && (
         <MatchesTab league={league} user={user} onLeagueUpdate={onLeagueUpdate} />
+      )}
+
+      {/* Tournament tab */}
+      {activeTab === 'tournament' && (
+        <TournamentPanel league={league} user={user} isAdmin={true} />
       )}
     </div>
   );

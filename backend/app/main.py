@@ -209,6 +209,9 @@ from app.leagues import (
     compute_final_ranking, migrate_legacy_leagues, migrate_to_folder_layout,
     default_rules, compute_match_winner, generate_playoffs,
 )
+from app.tournament import (
+    SUPPORTED_PLAYER_COUNTS, build_tournament, resolve_tournament,
+)
 
 migrate_legacy_leagues(DATA_DIR)
 migrate_to_folder_layout(DATA_DIR)
@@ -832,6 +835,131 @@ def api_start_playoffs(league_id: str, data: dict = Body(...)):
     lg["status"] = "playoffs"
     save_league(lg)
     return {"success": True, "league": lg}
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  TOURNAMENT (ad-hoc knockout / round-robin bracket, admin-managed)
+# ═══════════════════════════════════════════════════════════════════
+
+def _require_league_admin(lg: dict, phone: Optional[str]):
+    requester = get_user_by_phone(phone) if phone else None
+    if not requester or (requester["id"] not in lg.get("adminIds", []) and not is_super_admin(phone)):
+        return None
+    return requester
+
+
+def _tournament_live_view(lg: dict) -> Optional[dict]:
+    """Resolve the stored tournament against all accepted matches played so far
+    (used for the admin/player 'in progress' schedule view)."""
+    t = lg.get("tournament")
+    if not t:
+        return None
+    matches = list_matches(lg["sport"], lg["id"])
+    accepted = [m for m in matches if m.get("status") == "accepted"]
+    return resolve_tournament(t, accepted)
+
+
+@app.post("/api/leagues/{league_id}/tournament")
+def api_create_tournament(league_id: str, data: dict = Body(...)):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not _require_league_admin(lg, data.get("phone")):
+        return {"success": False, "message": "Not authorized"}
+
+    player_ids = data.get("playerIds")
+    if not isinstance(player_ids, list) or not player_ids:
+        return {"success": False, "message": "playerIds is required"}
+    valid_ids = {p.get("id") if isinstance(p, dict) else p for p in lg.get("players", [])}
+    player_ids = [str(pid) for pid in player_ids]
+    if any(pid not in valid_ids for pid in player_ids):
+        return {"success": False, "message": "playerIds must all belong to this league"}
+    if len(player_ids) not in SUPPORTED_PLAYER_COUNTS:
+        return {
+            "success": False,
+            "message": f"Tournament requires exactly 4, 5, 6, 8, or 12 players (got {len(player_ids)}).",
+        }
+
+    scheduled_date = str(data.get("scheduledDate") or "")[:10]
+    if not scheduled_date:
+        return {"success": False, "message": "scheduledDate is required"}
+    start_time = str(data.get("startTime") or "09:00")
+    match_minutes = int(data.get("matchDurationMinutes") or 30)
+    finals_minutes = int(data.get("finalsDurationMinutes") or match_minutes)
+
+    try:
+        built = build_tournament(player_ids, scheduled_date, start_time, match_minutes, finals_minutes)
+    except ValueError as e:
+        return {"success": False, "message": str(e)}
+
+    existing = lg.get("tournament") or {}
+    built["id"] = existing.get("id") or f"trny-{int(datetime.now().timestamp() * 1000)}"
+    built["createdAt"] = existing.get("createdAt") or datetime.now().isoformat()
+    built["updatedAt"] = datetime.now().isoformat()
+    built["resultsWindow"] = existing.get("resultsWindow")
+    lg["tournament"] = built
+    save_league(lg)
+    return {"success": True, "tournament": _tournament_live_view(lg)}
+
+
+@app.get("/api/leagues/{league_id}/tournament")
+def api_get_tournament(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    return {"success": True, "tournament": _tournament_live_view(lg)}
+
+
+@app.delete("/api/leagues/{league_id}/tournament")
+def api_delete_tournament(league_id: str, data: dict = Body(...)):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not _require_league_admin(lg, data.get("phone")):
+        return {"success": False, "message": "Not authorized"}
+    lg["tournament"] = None
+    save_league(lg)
+    return {"success": True}
+
+
+@app.post("/api/leagues/{league_id}/tournament/results-window")
+def api_set_tournament_results_window(league_id: str, data: dict = Body(...)):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    if not _require_league_admin(lg, data.get("phone")):
+        return {"success": False, "message": "Not authorized"}
+    if not lg.get("tournament"):
+        return {"success": False, "message": "No tournament exists for this league"}
+    start_date = str(data.get("startDate") or "")[:10]
+    end_date = str(data.get("endDate") or "")[:10]
+    if not start_date or not end_date:
+        return {"success": False, "message": "startDate and endDate are required"}
+    lg["tournament"]["resultsWindow"] = {"startDate": start_date, "endDate": end_date}
+    lg["tournament"]["updatedAt"] = datetime.now().isoformat()
+    save_league(lg)
+    return {"success": True, "tournament": _tournament_live_view(lg)}
+
+
+@app.get("/api/leagues/{league_id}/tournament/results")
+def api_get_tournament_results(league_id: str):
+    lg = get_league_by_id(league_id)
+    if not lg:
+        return {"success": False, "message": "League not found"}
+    t = lg.get("tournament")
+    if not t:
+        return {"success": False, "message": "No tournament exists for this league"}
+    window = t.get("resultsWindow")
+    if not window or not window.get("startDate") or not window.get("endDate"):
+        return {"success": False, "message": "Set a results date range first"}
+    matches = list_matches(lg["sport"], lg["id"])
+    accepted = [
+        m for m in matches
+        if m.get("status") == "accepted"
+        and window["startDate"] <= (m.get("datePlayed") or "")[:10] <= window["endDate"]
+    ]
+    resolved = resolve_tournament(t, accepted)
+    return {"success": True, "tournament": resolved}
 
 
 # ═══════════════════════════════════════════════════════════════════

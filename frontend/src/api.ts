@@ -102,6 +102,61 @@ export interface Playoffs {
   generatedAt: string;
 }
 
+export interface TournamentMatchup {
+  matchupId: string;
+  playerAId: string | null;
+  playerBId: string | null;
+  matchId: string | null;
+  winnerId: string | null;
+  label?: string;
+  fromGroupRank?: { group: string; rank: number }[];
+}
+
+export interface TournamentRound {
+  roundIndex: number;
+  label: string;
+  matches: TournamentMatchup[];
+  byePlayerId?: string | null;
+  startsAt: string;
+  endsAt: string;
+  durationMinutes: number;
+}
+
+export interface TournamentStanding {
+  playerId: string;
+  rank: number;
+  wins: number;
+  losses: number;
+}
+
+export interface TournamentGroup {
+  name: string;
+  type: 'roundrobin' | 'knockout4';
+  playerIds: string[];
+  rounds: TournamentRound[];
+  standings?: TournamentStanding[];
+}
+
+export interface TournamentStage2 {
+  rounds: TournamentRound[];
+}
+
+export interface Tournament {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  scheduledDate: string;
+  startTime: string;
+  matchDurationMinutes: number;
+  finalsDurationMinutes: number;
+  playerIds: string[];
+  format: 'round_robin_5' | 'two_groups_of_3' | 'groups_of_4';
+  groups: TournamentGroup[];
+  stage2?: TournamentStage2 | null;
+  finalRanking?: string[];
+  resultsWindow?: { startDate: string; endDate: string } | null;
+}
+
 export interface LeagueBlock {
   index: number;
   startDate: string;
@@ -440,6 +495,45 @@ export function updateLeagueBlocks(id: string, phone: string, blocks: LeagueBloc
 
 export function startPlayoffs(leagueId: string, phone: string): Promise<{ success: boolean; league?: League; message?: string }> {
   return post(`/api/leagues/${encodeURIComponent(leagueId)}/start-playoffs`, { phone });
+}
+
+export function createTournament(
+  leagueId: string,
+  phone: string,
+  playerIds: string[],
+  scheduledDate: string,
+  startTime: string,
+  matchDurationMinutes: number,
+  finalsDurationMinutes: number,
+): Promise<{ success: boolean; tournament?: Tournament; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/tournament`, {
+    phone, playerIds, scheduledDate, startTime, matchDurationMinutes, finalsDurationMinutes,
+  });
+}
+
+export function getTournament(leagueId: string): Promise<{ success: boolean; tournament: Tournament | null; message?: string }> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/tournament`);
+}
+
+export function deleteTournament(leagueId: string, phone: string): Promise<{ success: boolean; message?: string }> {
+  return fetch(`${API_BASE}/api/leagues/${encodeURIComponent(leagueId)}/tournament`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ phone }),
+  }).then(r => r.json());
+}
+
+export function setTournamentResultsWindow(
+  leagueId: string,
+  phone: string,
+  startDate: string,
+  endDate: string,
+): Promise<{ success: boolean; tournament?: Tournament; message?: string }> {
+  return post(`/api/leagues/${encodeURIComponent(leagueId)}/tournament/results-window`, { phone, startDate, endDate });
+}
+
+export function getTournamentResults(leagueId: string): Promise<{ success: boolean; tournament?: Tournament; message?: string }> {
+  return get(`/api/leagues/${encodeURIComponent(leagueId)}/tournament/results`);
 }
 
 export function submitMatch(

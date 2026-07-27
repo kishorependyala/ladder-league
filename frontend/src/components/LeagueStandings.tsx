@@ -14,6 +14,7 @@ import SubmitMatch from './SubmitMatch';
 import LeagueRulesSummary from './LeagueRulesSummary';
 import TeamAddScoreModal from './TeamAddScoreModal';
 import AvailabilityTab from './AvailabilityTab';
+import TournamentPanel from './TournamentPanel';
 
 
 type LeagueStandingsProps = {
@@ -21,7 +22,7 @@ type LeagueStandingsProps = {
   user: User;
 };
 
-type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'matches' | 'availability' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures' | 'team-individual';
+type StandingsTab = 'standings' | 'results' | 'breakdown' | 'rounds' | 'schedule' | 'matches' | 'availability' | 'rules' | 'doubles' | 'team-formation' | 'team-standings' | 'team-fixtures' | 'team-individual' | 'tournament';
 
 type MatchResultCard = {
   match: Match;
@@ -414,6 +415,7 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             // ['results', '🎯 Match Results'], // hidden — code preserved below
             ...(!isTeamLeague ? [['rules', '📖 League Rules'] as [StandingsTab, string]] : []),
             ...(isDoubles ? [['doubles', '🏸 Doubles'] as [StandingsTab, string]] : []),
+            ...(!isTeamLeague ? [['tournament', '🏆 Tournament'] as [StandingsTab, string]] : []),
           ] as [StandingsTab, string][]).map(([tab, label]) => (
             <button
               key={tab}
@@ -960,6 +962,10 @@ function LeagueStandings({ league, user }: LeagueStandingsProps) {
             isAdmin={isAdmin}
             onLeagueUpdated={updated => setCurrentLeague(updated)}
           />
+        )}
+
+        {activeTab === 'tournament' && (
+          <TournamentPanel league={currentLeague} user={user} isAdmin={isAdmin} />
         )}
 
         {activeTab === 'team-formation' && (
