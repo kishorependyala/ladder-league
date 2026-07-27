@@ -996,6 +996,15 @@ def api_submit_match(data: dict = Body(...)):
         "playoffGroup": playoff_group,
         "playoffMatchupId": playoff_matchup_id,
     }
+    # Admins entering a match on behalf of players may backdate it (e.g. maintenance /
+    # entering a match that was played earlier but never recorded).
+    date_played = data.get("datePlayed")
+    if date_played and is_admin:
+        try:
+            date.fromisoformat(str(date_played)[:10])
+            match["datePlayed"] = str(date_played)[:10]
+        except ValueError:
+            pass
     save_match(match)
     return {"success": True, "match": match}
 

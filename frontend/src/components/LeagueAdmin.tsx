@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, recalculateRanking, recalculateStandings, removePlayer, renameLeague, reopenRanking, startLeague, startPlayoffs, startRanking, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
+import { acceptMatch, addAdmin, addPlayer, convertToTeamLeague, deleteMatch, finalizeRanking, forceLeagueStatus, getAllUsers, getDisplayName, getLeagueMatches, getSports, leagueTypeLabel, rejectMatch, recalculateRanking, recalculateStandings, removePlayer, renameLeague, reopenRanking, SPORT_SCORING, startLeague, startPlayoffs, startRanking, submitMatch, updateLeagueBlocks, type League, type LeagueBlock, type Match, type Player, type Sport, type User } from '../api';
 import { S, mutedText, sectionTitle, statusPill, subheading } from '../theme';
 import LeagueRulesEditor from './LeagueRulesEditor';
 
@@ -33,6 +33,37 @@ function currentBlockIndex(blocks: LeagueBlock[]): number {
   }
   if (blocks.length && new Date().toISOString().slice(0, 10) >= blocks[blocks.length - 1].endDate) return blocks.length; // all done
   return -1;
+}
+
+// Scoring config resolution that respects a league's custom scoringFormat override
+// (mirrors ScoreCalculator's logic) — used by the admin "Add score" form so manually
+// entered scores are validated with the same rules players see.
+function resolveScoringCfg(sport: string, fmt?: League['rules']['scoringFormat'] | null) {
+  const base = { ...(SPORT_SCORING[sport] ?? SPORT_SCORING['tennis']) };
+  if (!fmt) return base;
+  return {
+    ...base,
+    wins_needed:   fmt.wins_needed   ?? base.wins_needed,
+    max_units:     fmt.max_units     ?? base.max_units,
+    points_to_win: fmt.points_to_win ?? base.points_to_win,
+    win_by:        fmt.win_by        ?? base.win_by,
+    max_points:    fmt.max_points    ?? base.max_points,
+  };
+}
+
+function unitWinnerFmt(me: number, opp: number, sport: string, fmt?: League['rules']['scoringFormat'] | null): 'me' | 'opp' | null {
+  const cfg = resolveScoringCfg(sport, fmt);
+  const hi = Math.max(me, opp), lo = Math.min(me, opp);
+  const side = me > opp ? 'me' : 'opp';
+  if (cfg.unit === 'Set') {
+    if (hi === 6 && lo <= 4) return side;
+    if (hi === 7 && (lo === 5 || lo === 6)) return side;
+    return null;
+  }
+  const { points_to_win: ptw, win_by: wb, max_points: mx } = cfg;
+  if (hi >= ptw && (hi - lo) >= wb) return side;
+  if (mx !== null && mx !== undefined && hi >= mx) return side;
+  return null;
 }
 
 const ADMIN_PIN = '1234567';
@@ -81,6 +112,158 @@ function PinConfirmModal({ label, onConfirm, onClose }: {
   );
 }
 
+// ── AddScoreForm ──────────────────────────────────────────────────────────────
+// Lets a league admin record a completed match on behalf of any two players in
+// the league (e.g. entering a score reported verbally, or backfilling a result).
+// The match is submitted then immediately admin-accepted so it's final right away.
+function AddScoreForm({ league, user, onAdded }: { league: League; user: User; onAdded: () => void }) {
+  const fmt = league.rules?.scoringFormat ?? null;
+  const cfg = resolveScoringCfg(league.sport, fmt);
+  const maxSets = cfg.max_units;
+  const winsNeeded = cfg.wins_needed;
+
+  const players = league.players;
+  const [playerAId, setPlayerAId] = useState('');
+  const [playerBId, setPlayerBId] = useState('');
+  const [sets, setSets] = useState<{ me: number; opp: number }[]>(
+    Array.from({ length: maxSets }, () => ({ me: 0, opp: 0 }))
+  );
+  const [datePlayed, setDatePlayed] = useState(new Date().toISOString().slice(0, 10));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const setScore = (i: number, side: 'me' | 'opp', val: string) => {
+    const num = Math.max(0, parseInt(val, 10) || 0);
+    setSets(prev => prev.map((s, idx) => idx === i ? { ...s, [side]: num } : s));
+  };
+
+  const setWinners = useMemo(() =>
+    sets.map(s => unitWinnerFmt(s.me, s.opp, league.sport, fmt)),
+    [sets, league.sport, fmt]
+  );
+
+  const { meWins, oppWins, matchWinner, activeSets } = useMemo(() => {
+    let me = 0, opp = 0, active = 0;
+    for (const w of setWinners) {
+      if (w === 'me') { me++; active++; }
+      else if (w === 'opp') { opp++; active++; }
+      if (me >= winsNeeded || opp >= winsNeeded) break;
+    }
+    let winner: 'me' | 'opp' | null = null;
+    if (me >= winsNeeded) winner = 'me';
+    else if (opp >= winsNeeded) winner = 'opp';
+    return { meWins: me, oppWins: opp, matchWinner: winner, activeSets: active };
+  }, [setWinners, winsNeeded]);
+
+  const setsToShow = Math.min(maxSets, matchWinner ? activeSets : maxSets);
+
+  const reset = () => {
+    setPlayerAId(''); setPlayerBId('');
+    setSets(Array.from({ length: maxSets }, () => ({ me: 0, opp: 0 })));
+    setDatePlayed(new Date().toISOString().slice(0, 10));
+  };
+
+  const handleSubmit = async () => {
+    setError(''); setMessage('');
+    if (!playerAId || !playerBId) { setError('Select both players.'); return; }
+    if (playerAId === playerBId) { setError('Players must be different.'); return; }
+    if (!matchWinner) { setError(`Enter a decisive score (first to ${winsNeeded} ${cfg.unit.toLowerCase()}${winsNeeded !== 1 ? 's' : ''}).`); return; }
+    setSubmitting(true);
+    try {
+      const decidedSets = sets.slice(0, activeSets);
+      const res = await submitMatch(user.phone, league.id, playerBId, { sets: decidedSets }, playerAId, datePlayed);
+      if (!res.success || !res.match) throw new Error((res as any).message || 'Failed to submit score.');
+      // Admin bulk-accepts both sides so the match is final immediately.
+      const acceptRes = await acceptMatch(res.match.id, user.phone, league.id);
+      if (!acceptRes.success) throw new Error((acceptRes as any).message || 'Score saved but could not be confirmed.');
+      const aName = players.find(p => p.id === playerAId);
+      const bName = players.find(p => p.id === playerBId);
+      const winnerName = matchWinner === 'me' ? aName : bName;
+      setMessage(`✅ Match recorded — ${winnerName ? `${winnerName.firstName} ${winnerName.lastName} won` : 'Result saved'}.`);
+      reset();
+      onAdded();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to record match.');
+    }
+    setSubmitting(false);
+  };
+
+  const aPlayer = players.find(p => p.id === playerAId);
+  const bPlayer = players.find(p => p.id === playerBId);
+  const nameA = aPlayer ? `${aPlayer.firstName} ${aPlayer.lastName}` : 'Player A';
+  const nameB = bPlayer ? `${bPlayer.firstName} ${bPlayer.lastName}` : 'Player B';
+
+  return (
+    <div style={{ border: '1px solid #fde68a', borderRadius: '0.9rem', padding: '0.9rem 1rem', background: '#fffbeb', display: 'grid', gap: '0.7rem' }}>
+      <p style={{ ...subheading, margin: 0 }}>➕ Add score (any two players)</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '0.6rem', alignItems: 'center' }}>
+        <select value={playerAId} onChange={e => setPlayerAId(e.target.value)} style={S.inp}>
+          <option value="">Select player A…</option>
+          {players.filter(p => p.id !== playerBId).map(p => (
+            <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
+          ))}
+        </select>
+        <span style={{ ...mutedText, fontWeight: 700, textAlign: 'center' }}>vs</span>
+        <select value={playerBId} onChange={e => setPlayerBId(e.target.value)} style={S.inp}>
+          <option value="">Select player B…</option>
+          {players.filter(p => p.id !== playerAId).map(p => (
+            <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'grid', gap: '0.4rem' }}>
+        {Array.from({ length: Math.max(setsToShow, 1) }, (_, i) => {
+          const w = setWinners[i];
+          const aWon = w === 'me', bWon = w === 'opp';
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="number" min={0} value={sets[i].me}
+                onChange={e => setScore(i, 'me', e.target.value)}
+                placeholder={nameA}
+                style={{ ...S.inp, textAlign: 'center', fontWeight: 700, borderColor: aWon ? '#22c55e' : bWon ? '#ef4444' : '#e5e7eb', background: aWon ? '#f0fdf4' : bWon ? '#fef2f2' : '#fff' }}
+              />
+              <span style={{ textAlign: 'center', color: '#9ca3af', fontWeight: 700 }}>–</span>
+              <input
+                type="number" min={0} value={sets[i].opp}
+                onChange={e => setScore(i, 'opp', e.target.value)}
+                placeholder={nameB}
+                style={{ ...S.inp, textAlign: 'center', fontWeight: 700, borderColor: bWon ? '#22c55e' : aWon ? '#ef4444' : '#e5e7eb', background: bWon ? '#f0fdf4' : aWon ? '#fef2f2' : '#fff' }}
+              />
+              <span style={{ fontSize: '0.78rem', color: '#9ca3af', minWidth: 46 }}>{cfg.unit} {i + 1}</span>
+            </div>
+          );
+        })}
+        {maxSets > setsToShow && !matchWinner && (
+          <p style={{ ...mutedText, fontSize: '0.76rem', margin: 0 }}>Up to {maxSets} {cfg.unit.toLowerCase()}s allowed.</p>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ ...mutedText, fontSize: '0.8rem' }}>Date played:</label>
+        <input type="date" value={datePlayed} onChange={e => setDatePlayed(e.target.value)} max={new Date().toISOString().slice(0, 10)} style={{ ...S.inp, maxWidth: 170 }} />
+        {matchWinner && (
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#16a34a' }}>
+            🏆 {matchWinner === 'me' ? nameA : nameB} wins {meWins}-{oppWins}
+          </span>
+        )}
+      </div>
+
+      {error && <div style={S.errorBox}>{error}</div>}
+      {message && <div style={S.successBox}>{message}</div>}
+
+      <div>
+        <button style={S.smallBtn} disabled={submitting} onClick={handleSubmit}>
+          {submitting ? 'Saving…' : '💾 Save match'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── MatchesTab ────────────────────────────────────────────────────────────────
 function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: User; onLeagueUpdate?: (l: League) => void }) {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -117,6 +300,15 @@ function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: Us
     );
   }, [matches, filterPlayerId]);
 
+  const pendingCount = useMemo(() => matches.filter(m => m.status === 'pending').length, [matches]);
+
+  const refreshLeague = async () => {
+    if (!onLeagueUpdate) return;
+    const { getLeague } = await import('../api');
+    const updated = await getLeague(league.id);
+    if (updated) onLeagueUpdate(updated);
+  };
+
   const handleDelete = async (match: Match) => {
     setBusyId(match.id); setError(''); setMessage('');
     try {
@@ -124,14 +316,35 @@ function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: Us
       if (!res.success) throw new Error(res.message || 'Failed to delete.');
       setMatches(prev => prev.filter(m => m.id !== match.id));
       setMessage('Match deleted. Rankings recalculated.');
-      if (onLeagueUpdate) {
-        const { getLeague } = await import('../api');
-        const updated = await getLeague(league.id);
-        if (updated) onLeagueUpdate(updated);
-      }
+      await refreshLeague();
     } catch (e) { setError(e instanceof Error ? e.message : 'Error deleting match.'); }
     setBusyId(null);
     setPinTarget(null);
+  };
+
+  const handleApprove = async (match: Match) => {
+    setBusyId(match.id); setError(''); setMessage('');
+    try {
+      // Admin approval bulk-accepts on behalf of both/all sides.
+      const res = await acceptMatch(match.id, user.phone, league.id);
+      if (!res.success) throw new Error((res as any).message || 'Failed to approve.');
+      await load();
+      setMessage('Match approved.');
+      await refreshLeague();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Error approving match.'); }
+    setBusyId(null);
+  };
+
+  const handleReject = async (match: Match) => {
+    if (!window.confirm(`Reject this match: ${matchLabel(match)}?`)) return;
+    setBusyId(match.id); setError(''); setMessage('');
+    try {
+      const res = await rejectMatch(match.id, user.phone, league.id);
+      if (!res.success) throw new Error((res as any).message || 'Failed to reject.');
+      await load();
+      setMessage('Match rejected.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Error rejecting match.'); }
+    setBusyId(null);
   };
 
   const matchLabel = (m: Match): string => {
@@ -164,6 +377,16 @@ function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: Us
           onConfirm={() => handleDelete(pinTarget)}
           onClose={() => setPinTarget(null)}
         />
+      )}
+
+      <AddScoreForm league={league} user={user} onAdded={async () => { await load(); await refreshLeague(); }} />
+
+      {pendingCount > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.8rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.6rem' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#92400e' }}>
+            ⏳ {pendingCount} match{pendingCount !== 1 ? 'es' : ''} pending confirmation
+          </span>
+        </div>
       )}
 
       {/* Player filter */}
@@ -215,6 +438,26 @@ function MatchesTab({ league, user, onLeagueUpdate }: { league: League; user: Us
               <span style={{ fontSize: '0.75rem', fontWeight: 700, color: statusColor(m.status), background: '#f9fafb', borderRadius: '0.35rem', padding: '0.1rem 0.45rem', border: '1px solid #e5e7eb' }}>
                 {m.status ?? 'pending'}
               </span>
+              {m.status === 'pending' && (
+                <>
+                  <button
+                    style={{ ...S.smallBtn, background: '#16a34a', boxShadow: 'none', fontSize: '0.75rem', padding: '0.2rem 0.55rem' }}
+                    disabled={busyId === m.id}
+                    onClick={() => handleApprove(m)}
+                    title="Approve match"
+                  >
+                    {busyId === m.id ? '…' : '✓ Approve'}
+                  </button>
+                  <button
+                    style={{ ...S.smallOutlineBtn, color: '#dc2626', borderColor: '#dc2626', fontSize: '0.75rem', padding: '0.2rem 0.55rem' }}
+                    disabled={busyId === m.id}
+                    onClick={() => handleReject(m)}
+                    title="Reject match"
+                  >
+                    ✕ Reject
+                  </button>
+                </>
+              )}
               <button
                 style={{ ...S.smallBtn, background: '#dc2626', boxShadow: 'none', fontSize: '0.75rem', padding: '0.2rem 0.55rem' }}
                 disabled={busyId === m.id}

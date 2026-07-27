@@ -448,6 +448,7 @@ export function submitMatch(
   opponentId: string,
   score: MatchScore,
   submitterPlayerId?: string,
+  datePlayed?: string,
 ): Promise<{ success: boolean; match: Match }> {
   return post('/api/matches/submit', {
     phone,
@@ -455,6 +456,7 @@ export function submitMatch(
     opponentId,
     score,
     ...(submitterPlayerId ? { submitterPlayerId } : {}),
+    ...(datePlayed ? { datePlayed } : {}),
   });
 }
 
